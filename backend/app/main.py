@@ -8,10 +8,12 @@ sys.stdout.reconfigure(encoding='utf-8')
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from typing import Dict, Optional, List
 from datetime import datetime
 import traceback
+import io
 
 # 导入计算模块
 try:
@@ -20,6 +22,10 @@ try:
     from app.core.heat_exchanger import calculate_heat_exchanger
     from app.core.selection import select_motor, select_pipe_diameter, select_valve, calculate_pipe_flow
     from app.core.calculator import calculate_mode2, calculate_mode3
+    # V2.0 新增模块
+    from app.core.vle import vle_calc
+    from app.core.separator import separator_design
+    from app.core.turbine_1d import turbine_1d_design
     print("[OK] All modules imported successfully")
 except Exception as e:
     print(f"[ERROR] Import failed: {e}")
@@ -367,6 +373,328 @@ def export_excel_mode3(req: Mode3Request):
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============ V2.0 新增 API ============
+
+# 流程节点定义
+FLOW_NODES = {
+    'mode1': [
+        {'id': 'cold_inlet', 'name': '冷边入口', 'position': 'start'},
+        {'id': 'hx_in', 'name': '换热器入口', 'position': 'before_hx'},
+        {'id': 'hx_out', 'name': '换热器出口', 'position': 'after_hx'},
+        {'id': 'turbine_in', 'name': '涡轮入口', 'position': 'before_turbine'},
+        {'id': 'turbine_out', 'name': '涡轮出口', 'position': 'after_turbine'},
+        {'id': 'outlet', 'name': '总出口', 'position': 'end'},
+    ],
+    'mode2': [
+        {'id': 'cold_inlet', 'name': '冷边入口', 'position': 'start'},
+        {'id': 'turbine_in', 'name': '涡轮入口', 'position': 'before_turbine'},
+        {'id': 'turbine_out', 'name': '涡轮出口', 'position': 'after_turbine'},
+        {'id': 'hx_in', 'name': '换热器入口', 'position': 'before_hx'},
+        {'id': 'hx_out', 'name': '换热器出口', 'position': 'after_hx'},
+        {'id': 'outlet', 'name': '总出口', 'position': 'end'},
+    ],
+    'mode3': [
+        {'id': 'cold_inlet', 'name': '冷边入口', 'position': 'start'},
+        {'id': 'turbine_in', 'name': '涡轮入口', 'position': 'before_turbine'},
+        {'id': 'turbine_out', 'name': '涡轮出口', 'position': 'after_turbine'},
+        {'id': 'outlet', 'name': '总出口', 'position': 'end'},
+    ],
+}
+
+
+class VleRequest(BaseModel):
+    """气液平衡计算请求"""
+    p: float = Field(description="压力 (MPa.G)")
+    t: float = Field(description="温度 (°C)")
+    composition: Dict[str, float] = Field(description="介质组成")
+    total_flow: float = Field(description="总流量")
+    flow_unit: str = Field(default='T/h', description="流量单位")
+
+
+class SeparatorRequest(BaseModel):
+    """分离器计算请求"""
+    source_mode: str = Field(description="来源模式 (mode1/mode2/mode3)")
+    node_id: str = Field(description="添加位置节点 ID")
+    node_params: Dict = Field(description="节点工况参数")
+    vle_result: Optional[Dict] = Field(default=None, description="气液平衡结果")
+    droplet_size: float = Field(default=100, description="设计液滴粒径 (μm)")
+    length_ratio: float = Field(default=3.0, description="长径比 L/D")
+    separator_type: str = Field(default='vertical', description="分离器类型 (vertical/horizontal)")
+    residence_time_req: float = Field(default=180, description="要求停留时间 (s)")
+
+
+class Turbine1DRequest(BaseModel):
+    """涡轮一维设计请求"""
+    source_mode: str = Field(description="来源模式")
+    flow_rate: float = Field(description="流量")
+    flow_unit: str = Field(description="流量单位")
+    p_in: float = Field(description="进口压力 (MPa.G)")
+    p_out: float = Field(description="出口压力 (MPa.G)")
+    t_in: float = Field(description="进口温度 (°C)")
+    t_out: float = Field(description="出口温度 (°C)")
+    rho_in: float = Field(description="进口密度 (kg/m³)")
+    rho_out: float = Field(description="出口密度 (kg/m³)")
+    power_shaft: float = Field(description="轴功率 (kW)")
+    speed_rpm: float = Field(default=3000, description="转速 (rpm)")
+    blade_count: int = Field(default=13, description="叶片数")
+    speed_ratio: float = Field(default=0.65, description="速比 (u/C₀)")
+    reaction: float = Field(default=50, description="反动度 (%)")
+
+
+@app.get("/api/flow/{mode}/nodes")
+def get_flow_nodes(mode: str):
+    """获取流程节点列表"""
+    nodes = FLOW_NODES.get(mode, [])
+    return {"success": True, "nodes": nodes}
+
+
+@app.post("/api/vle/calc")
+def calculate_vle(req: VleRequest):
+    """气液平衡计算 (PT 闪蒸)"""
+    try:
+        result = vle_calc(
+            p=req.p,
+            t=req.t,
+            composition=req.composition,
+            total_flow=req.total_flow,
+            flow_unit=req.flow_unit,
+            p_unit='MPa.G'
+        )
+        return result
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/calculate/separator")
+def calculate_separator(req: SeparatorRequest):
+    """分离器设计计算"""
+    try:
+        # 从节点参数中提取工况
+        node_params = req.node_params
+        
+        # 获取气体参数
+        rho_gas = node_params.get('rho_gas', node_params.get('rho', 1.25))
+        mu_gas = node_params.get('mu_gas', 1.8e-5)
+        gas_flow = node_params.get('flow_rate', 1000)
+        flow_unit = node_params.get('flow_unit', 'Nm3/h')
+        
+        # 从 VLE 结果获取液体参数
+        if req.vle_result and not req.vle_result.get('skip', False):
+            liquid_flow = req.vle_result.get('liquid_flow', 0)
+            rho_liquid = req.vle_result.get('rho_liquid', 958)
+        else:
+            # 无 VLE 计算时，用户输入或默认值
+            liquid_flow = node_params.get('liquid_flow', 0)
+            rho_liquid = node_params.get('rho_liquid', 958)
+        
+        result = separator_design(
+            gas_flow=gas_flow,
+            rho_gas=rho_gas,
+            mu_gas=mu_gas,
+            liquid_flow=liquid_flow,
+            rho_liquid=rho_liquid,
+            droplet_size=req.droplet_size,
+            length_ratio=req.length_ratio,
+            separator_type=req.separator_type,
+            residence_time_req=req.residence_time_req,
+            flow_unit=flow_unit,
+            liquid_flow_unit='T/h',
+        )
+        
+        # 添加 VLE 结果
+        if req.vle_result:
+            result['vle'] = req.vle_result
+        
+        return result
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/calculate/mode5")
+def calculate_mode5(req: Turbine1DRequest):
+    """模式 5：涡轮一维通流设计"""
+    try:
+        result = turbine_1d_design(
+            flow_rate=req.flow_rate,
+            flow_unit=req.flow_unit,
+            p_in=req.p_in,
+            p_out=req.p_out,
+            t_in=req.t_in,
+            t_out=req.t_out,
+            rho_in=req.rho_in,
+            rho_out=req.rho_out,
+            power_shaft=req.power_shaft,
+            speed_rpm=req.speed_rpm,
+            blade_count=req.blade_count,
+            speed_ratio=req.speed_ratio,
+            reaction=req.reaction,
+        )
+        return result
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/export/pdf/mode4")
+def export_pdf_mode4(req: SeparatorRequest):
+    """Export Mode 4 PDF Report (Separator)"""
+    try:
+        from app.reports.pdf_export_v2 import export_mode4_pdf
+        from fastapi.responses import StreamingResponse
+        
+        # 先计算
+        node_params = req.node_params
+        vle_result = req.vle_result
+        
+        result = separator_design(
+            gas_flow=node_params.get('flow_rate', 1000),
+            rho_gas=node_params.get('rho', 1.25),
+            mu_gas=node_params.get('mu', 1.8e-5),
+            liquid_flow=vle_result.get('liquid_flow', 0) if vle_result and not vle_result.get('skip') else 0,
+            rho_liquid=vle_result.get('rho_liquid', 958) if vle_result and not vle_result.get('skip') else 958,
+            droplet_size=req.droplet_size,
+            length_ratio=req.length_ratio,
+            separator_type=req.separator_type,
+            residence_time_req=req.residence_time_req,
+        )
+        
+        input_params = {
+            'node_id': req.node_id,
+            'node_params': node_params,
+            'designParams': {
+                'dropletSize': req.droplet_size,
+                'lengthRatio': req.length_ratio,
+                'separatorType': req.separator_type,
+                'residenceTimeReq': req.residence_time_req,
+            }
+        }
+        
+        pdf_bytes = export_mode4_pdf(result, input_params)
+        return StreamingResponse(io.BytesIO(pdf_bytes), media_type="application/pdf",
+                       headers={"Content-Disposition": f"attachment; filename=separator_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"})
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/export/pdf/mode5")
+def export_pdf_mode5(req: Turbine1DRequest):
+    """Export Mode 5 PDF Report (Turbine)"""
+    try:
+        from app.reports.pdf_export_v2 import export_mode5_pdf
+        from fastapi.responses import StreamingResponse
+        
+        result = turbine_1d_design(
+            flow_rate=req.flow_rate,
+            flow_unit=req.flow_unit,
+            p_in=req.p_in,
+            p_out=req.p_out,
+            t_in=req.t_in,
+            t_out=req.t_out,
+            rho_in=req.rho_in,
+            rho_out=req.rho_out,
+            power_shaft=req.power_shaft,
+            speed_rpm=req.speed_rpm,
+            blade_count=req.blade_count,
+            speed_ratio=req.speed_ratio,
+            reaction=req.reaction,
+        )
+        
+        input_params = {
+            'speed_rpm': req.speed_rpm,
+            'speed_ratio': req.speed_ratio,
+            'reaction': req.reaction,
+        }
+        
+        pdf_bytes = export_mode5_pdf(result, input_params)
+        return StreamingResponse(io.BytesIO(pdf_bytes), media_type="application/pdf",
+                       headers={"Content-Disposition": f"attachment; filename=turbine_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"})
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/export/excel/mode4")
+def export_excel_mode4(req: SeparatorRequest):
+    """Export Mode 4 Excel Report (Separator)"""
+    try:
+        from app.reports.excel_export_v2 import export_mode4_excel
+        from fastapi.responses import StreamingResponse
+        
+        node_params = req.node_params
+        vle_result = req.vle_result
+        
+        result = separator_design(
+            gas_flow=node_params.get('flow_rate', 1000),
+            rho_gas=node_params.get('rho', 1.25),
+            mu_gas=node_params.get('mu', 1.8e-5),
+            liquid_flow=vle_result.get('liquid_flow', 0) if vle_result and not vle_result.get('skip') else 0,
+            rho_liquid=vle_result.get('rho_liquid', 958) if vle_result and not vle_result.get('skip') else 958,
+            droplet_size=req.droplet_size,
+            length_ratio=req.length_ratio,
+            separator_type=req.separator_type,
+            residence_time_req=req.residence_time_req,
+        )
+        
+        input_params = {
+            'node_id': req.node_id,
+            'node_params': node_params,
+            'designParams': {
+                'dropletSize': req.droplet_size,
+                'lengthRatio': req.length_ratio,
+                'separatorType': req.separator_type,
+                'residenceTimeReq': req.residence_time_req,
+            }
+        }
+        
+        excel_bytes = export_mode4_excel(result, input_params)
+        return StreamingResponse(io.BytesIO(excel_bytes), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                       headers={"Content-Disposition": f"attachment; filename=separator_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"})
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/export/excel/mode5")
+def export_excel_mode5(req: Turbine1DRequest):
+    """Export Mode 5 Excel Report (Turbine)"""
+    try:
+        from app.reports.excel_export_v2 import export_mode5_excel
+        from fastapi.responses import StreamingResponse
+        
+        result = turbine_1d_design(
+            flow_rate=req.flow_rate,
+            flow_unit=req.flow_unit,
+            p_in=req.p_in,
+            p_out=req.p_out,
+            t_in=req.t_in,
+            t_out=req.t_out,
+            rho_in=req.rho_in,
+            rho_out=req.rho_out,
+            power_shaft=req.power_shaft,
+            speed_rpm=req.speed_rpm,
+            blade_count=req.blade_count,
+            speed_ratio=req.speed_ratio,
+            reaction=req.reaction,
+        )
+        
+        input_params = {
+            'speed_rpm': req.speed_rpm,
+            'speed_ratio': req.speed_ratio,
+            'reaction': req.reaction,
+        }
+        
+        excel_bytes = export_mode5_excel(result, input_params)
+        return StreamingResponse(io.BytesIO(excel_bytes), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                       headers={"Content-Disposition": f"attachment; filename=turbine_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"})
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 if __name__ == "__main__":
     import uvicorn

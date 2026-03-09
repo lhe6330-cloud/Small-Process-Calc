@@ -49,6 +49,18 @@
       </el-col>
     </el-row>
     
+    <!-- V2.0 新增功能入口 -->
+    <el-divider />
+    
+    <div class="v2-actions">
+      <el-button type="info" @click="showSeparator = true" :disabled="!currentMode">
+        📐 添加分离器
+      </el-button>
+      <el-button type="primary" @click="showTurbine1D = true" :disabled="!currentMode">
+        ⚙️ 涡轮一维设计
+      </el-button>
+    </div>
+    
     <el-divider />
     
     <div class="export-actions">
@@ -60,15 +72,85 @@
       </el-button>
     </div>
   </el-card>
+  
+  <!-- 分离器设计弹窗 -->
+  <SeparatorForm 
+    v-model="showSeparator"
+    :source-mode="currentMode"
+    :node-params="separatorNodeParams"
+    @add-separator="handleAddSeparator"
+  />
+  
+  <!-- 涡轮一维设计弹窗 -->
+  <Turbine1DForm
+    v-model="showTurbine1D"
+    :turbine-data="turbineData"
+    @calculate="handleTurbineCalc"
+  />
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
+import SeparatorForm from './modes/SeparatorForm.vue'
+import Turbine1DForm from './modes/Turbine1DForm.vue'
 
 const props = defineProps(['result'])
 const emitting = defineEmits(['calculate'])
 
 const exporting = ref({ pdf: false, excel: false })
+const showSeparator = ref(false)
+const showTurbine1D = ref(false)
+
+const currentMode = computed(() => {
+  if (localStorage.getItem('lastInputData_mode3')) return 'mode3'
+  if (localStorage.getItem('lastInputData_mode2')) return 'mode2'
+  if (localStorage.getItem('lastInputData_mode1')) return 'mode1'
+  return ''
+})
+
+const separatorNodeParams = computed(() => {
+  // 从计算结果中提取节点参数
+  const result = props.result || {}
+  const turbine = result.turbine || {}
+  return {
+    p: turbine.p_out || 0.1,
+    t: turbine.t_out || 100,
+    flow_rate: 1000,  // 需要从输入数据获取
+    flow_unit: 'Nm3/h',
+    rho: turbine.rho_out || 1.2,
+    mu: 1.8e-5,
+    composition: { N2: 1.0 },  // 需要从输入数据获取
+  }
+})
+
+const turbineData = computed(() => {
+  const result = props.result || {}
+  const turbine = result.turbine || {}
+  return {
+    flow_rate: 1000,
+    flow_unit: 'Nm3/h',
+    p_in: 0.5,
+    p_out: turbine.p_out || 0.1,
+    t_in: 200,
+    t_out: turbine.t_out || 85,
+    rho_in: 4.5,
+    rho_out: turbine.rho_out || 1.2,
+    power_shaft: turbine.power_shaft || 0,
+    power_electric: turbine.power_electric || 0,
+    medium: 'N2',
+    composition: { N2: 1.0 },
+  }
+})
+
+const handleAddSeparator = (data) => {
+  console.log('添加分离器:', data)
+  // TODO: 保存分离器数据到结果
+}
+
+const handleTurbineCalc = (result) => {
+  console.log('涡轮设计结果:', result)
+  // TODO: 显示或保存涡轮设计结果
+}
 
 // 获取当前激活的模式（从 URL 或父组件传递）
 const getCurrentMode = () => {
@@ -172,5 +254,6 @@ const exportExcel = async () => {
 .result-item { padding: 15px; background: #0F172A; border-radius: 8px; text-align: center; }
 .label { color: #94A3B8; font-size: 14px; margin-bottom: 8px; }
 .value { color: #F1F5F9; font-size: 18px; font-weight: bold; }
+.v2-actions { display: flex; gap: 10px; justify-content: center; margin: 15px 0; }
 .export-actions { display: flex; gap: 10px; justify-content: center; margin-top: 20px; }
 </style>

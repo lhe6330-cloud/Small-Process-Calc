@@ -6,7 +6,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import cm
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-from reportlab.lib.enums import TA_CENTER
+from reportlab.lib.enums import TA_CENTER, TA_LEFT
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from datetime import datetime
@@ -295,3 +295,103 @@ def export_mode3_pdf(data: dict, input_params: dict) -> bytes:
     doc.build(elements)
     buffer.seek(0)
     return buffer.read()
+
+# ============ V2.0 新增导出 ============
+
+def export_mode4_pdf(data: dict, input_params: dict) -> bytes:
+    """导出模式 4 PDF 报告（分离器设计）"""
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=2*cm, leftMargin=2*cm, topMargin=2*cm, bottomMargin=2*cm)
+    font_name = register_chinese_font()
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle('CustomTitle', parent=styles['Heading1'], fontSize=18, textColor=colors.HexColor('#00D4FF'), alignment=TA_CENTER, fontName=font_name, spaceAfter=20)
+    heading_style = ParagraphStyle('CustomHeading', parent=styles['Heading2'], fontSize=14, textColor=colors.HexColor('#00D4FF'), fontName=font_name, spaceAfter=12, spaceBefore=12)
+    normal_style = ParagraphStyle('CustomNormal', parent=styles['Normal'], fontSize=10, textColor=colors.HexColor('#333333'), fontName=font_name)
+    elements = []
+    elements.append(Paragraph("PDS CALC V2.0 - 分离器设计报告", title_style))
+    elements.append(Paragraph("模式 4: 流程节点分离器", ParagraphStyle('Subtitle', parent=normal_style, alignment=TA_CENTER, fontSize=12)))
+    elements.append(Spacer(1, 0.3*cm))
+    elements.append(Paragraph(f"计算时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", ParagraphStyle('Time', parent=normal_style, alignment=TA_CENTER, textColor=colors.gray)))
+    elements.append(Spacer(1, 0.5*cm))
+    node_params = input_params.get('node_params', {})
+    input_data = [['参数', '数值'], ['添加位置', input_params.get('node_id', '-')], ['压力 (MPa.G)', str(node_params.get('p', '-'))], ['温度 (°C)', str(node_params.get('t', '-'))], ['流量', f"{node_params.get('flow_rate', 0)} {node_params.get('flow_unit', '')}"], ['气体密度 (kg/m3)', str(node_params.get('rho', '-'))]]
+    input_table = Table(input_data, colWidths=[6*cm, 6*cm])
+    input_table.setStyle(TableStyle([('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1E293B')), ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke), ('ALIGN', (0, 0), (-1, -1), 'CENTER'), ('FONTNAME', (0, 0), (-1, 0), font_name), ('GRID', (0, 0), (-1, -1), 1, colors.black)]))
+    elements.append(input_table)
+    elements.append(Spacer(1, 0.5*cm))
+    vle_result = data.get('vle', {})
+    if vle_result and not vle_result.get('skip', False):
+        elements.append(Paragraph("气液平衡计算", heading_style))
+        vle_data = [['参数', '数值'], ['气相分率', f"{vle_result.get('vapor_frac', 0) * 100:.1f} %"], ['液相分率', f"{vle_result.get('liquid_frac', 0) * 100:.1f} %"], ['冷凝液流量 (T/h)', f"{vle_result.get('liquid_flow', 0):.2f}"]]
+        vle_table = Table(vle_data, colWidths=[6*cm, 6*cm])
+        vle_table.setStyle(TableStyle([('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1E293B')), ('GRID', (0, 0), (-1, -1), 1, colors.black)]))
+        elements.append(vle_table)
+        elements.append(Spacer(1, 0.5*cm))
+    elements.append(Paragraph("分离器尺寸", heading_style))
+    result_data = [['参数', '数值'], ['分离器直径 (mm)', str(data.get('diameter', 0))], ['分离器高度/长度 (mm)', str(data.get('length', 0))], ['液体停留时间 (s)', f"{data.get('residence_time', 0):.1f}"], ['校核结果', 'OK' if data.get('check_passed') else 'WARN']]
+    result_table = Table(result_data, colWidths=[6*cm, 6*cm])
+    result_table.setStyle(TableStyle([('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#00D4FF')), ('TEXTCOLOR', (0, 0), (-1, 0), colors.white), ('GRID', (0, 0), (-1, -1), 1, colors.black)]))
+    elements.append(result_table)
+    elements.append(Spacer(1, 1*cm))
+    footer = Paragraph("<para alignment='center'><font color='gray' size='8'>PDS CALC V2.0 | {}</font></para>".format(datetime.now().strftime('%Y-%m-%d %H:%M:%S')), normal_style)
+    elements.append(footer)
+    doc.build(elements)
+    buffer.seek(0)
+    return buffer.read()
+
+
+def export_mode5_pdf(data: dict, input_params: dict) -> bytes:
+    """导出模式 5 PDF 报告（涡轮一维设计）"""
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=2*cm, leftMargin=2*cm, topMargin=2*cm, bottomMargin=2*cm)
+    font_name = register_chinese_font()
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle('CustomTitle', parent=styles['Heading1'], fontSize=18, textColor=colors.HexColor('#00D4FF'), alignment=TA_CENTER, fontName=font_name, spaceAfter=20)
+    heading_style = ParagraphStyle('CustomHeading', parent=styles['Heading2'], fontSize=14, textColor=colors.HexColor('#00D4FF'), fontName=font_name, spaceAfter=12, spaceBefore=12)
+    normal_style = ParagraphStyle('CustomNormal', parent=styles['Normal'], fontSize=10, textColor=colors.HexColor('#333333'), fontName=font_name)
+    elements = []
+    elements.append(Paragraph("PDS CALC V2.0 - 涡轮一维设计报告", title_style))
+    elements.append(Paragraph("模式 5: 径流式涡轮通流设计", ParagraphStyle('Subtitle', parent=normal_style, alignment=TA_CENTER, fontSize=12)))
+    elements.append(Spacer(1, 0.3*cm))
+    elements.append(Paragraph(f"计算时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", ParagraphStyle('Time', parent=normal_style, alignment=TA_CENTER, textColor=colors.gray)))
+    elements.append(Spacer(1, 0.5*cm))
+    elements.append(Paragraph("设计参数", heading_style))
+    design_data = [['参数', '数值'], ['转速 n (rpm)', str(input_params.get('speed_rpm', 3000))], ['速比 u/C?', str(input_params.get('speed_ratio', 0.65))], ['反动度 Ω (%)', str(input_params.get('reaction', 50))]]
+    design_table = Table(design_data, colWidths=[6*cm, 6*cm])
+    design_table.setStyle(TableStyle([('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1E293B')), ('GRID', (0, 0), (-1, -1), 1, colors.black)]))
+    elements.append(design_table)
+    elements.append(Spacer(1, 0.5*cm))
+    elements.append(Paragraph("基本尺寸", heading_style))
+    dims = data.get('dimensions', {})
+    dim_data = [['参数', '符号', '数值 (mm)'], ['叶轮外径', 'D?', str(dims.get('D1', 0))], ['叶轮内径', 'D?', str(dims.get('D2', 0))], ['进口叶片高度', 'b?', str(dims.get('b1', 0))], ['出口叶片高度', 'b?', str(dims.get('b2', 0))]]
+    dim_table = Table(dim_data, colWidths=[4*cm, 2*cm, 4*cm])
+    dim_table.setStyle(TableStyle([('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#00D4FF')), ('TEXTCOLOR', (0, 0), (-1, 0), colors.white), ('GRID', (0, 0), (-1, -1), 1, colors.black)]))
+    elements.append(dim_table)
+    elements.append(Spacer(1, 0.5*cm))
+    elements.append(Paragraph("速度三角形 - 进口", heading_style))
+    vel_in = data.get('velocity_triangle_in', {})
+    vel_in_data = [['参数', '数值'], ['绝对速度 C?', f"{vel_in.get('C1', 0)} m/s"], ['相对速度 W?', f"{vel_in.get('W1', 0)} m/s"], ['圆周速度 U?', f"{vel_in.get('U1', 0)} m/s"], ['绝对气流角 α?', f"{vel_in.get('alpha1', 0)} °"], ['相对气流角 β?', f"{vel_in.get('beta1', 0)} °"]]
+    vel_in_table = Table(vel_in_data, colWidths=[6*cm, 6*cm])
+    vel_in_table.setStyle(TableStyle([('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1E293B')), ('GRID', (0, 0), (-1, -1), 1, colors.black)]))
+    elements.append(vel_in_table)
+    elements.append(Spacer(1, 0.5*cm))
+    elements.append(Paragraph("速度三角形 - 出口", heading_style))
+    vel_out = data.get('velocity_triangle_out', {})
+    vel_out_data = [['参数', '数值'], ['绝对速度 C?', f"{vel_out.get('C2', 0)} m/s"], ['相对速度 W?', f"{vel_out.get('W2', 0)} m/s"], ['圆周速度 U?', f"{vel_out.get('U2', 0)} m/s"], ['绝对气流角 α?', f"{vel_out.get('alpha2', 0)} °"], ['相对气流角 β?', f"{vel_out.get('beta2', 0)} °"]]
+    vel_out_table = Table(vel_out_data, colWidths=[6*cm, 6*cm])
+    vel_out_table.setStyle(TableStyle([('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1E293B')), ('GRID', (0, 0), (-1, -1), 1, colors.black)]))
+    elements.append(vel_out_table)
+    elements.append(Spacer(1, 0.5*cm))
+    elements.append(Paragraph("性能验证", heading_style))
+    perf = data.get('performance', {})
+    perf_data = [['参数', '数值'], ['级效率 η', f"{data.get('thermo_params', {}).get('eta', 0)} %"], ['计算功率', f"{perf.get('P_calc', 0)} kW"], ['输入功率', f"{perf.get('P_input', 0)} kW"], ['功率验证', 'OK' if perf.get('match') else 'WARN']]
+    perf_table = Table(perf_data, colWidths=[6*cm, 6*cm])
+    perf_table.setStyle(TableStyle([('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#00D4FF')), ('TEXTCOLOR', (0, 0), (-1, 0), colors.white), ('GRID', (0, 0), (-1, -1), 1, colors.black)]))
+    elements.append(perf_table)
+    elements.append(Spacer(1, 1*cm))
+    footer = Paragraph("<para alignment='center'><font color='gray' size='8'>PDS CALC V2.0 | {}</font></para>".format(datetime.now().strftime('%Y-%m-%d %H:%M:%S')), normal_style)
+    elements.append(footer)
+    doc.build(elements)
+    buffer.seek(0)
+    return buffer.read()
+
