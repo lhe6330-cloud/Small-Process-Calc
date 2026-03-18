@@ -10,32 +10,36 @@
         <el-tab-pane label="模式 1: 先加热再膨胀" name="mode1"></el-tab-pane>
         <el-tab-pane label="模式 2: 先膨胀后回热" name="mode2"></el-tab-pane>
         <el-tab-pane label="模式 3: 直接膨胀" name="mode3"></el-tab-pane>
-        <el-tab-pane label="分离器 (V2.0)" name="mode4" disabled></el-tab-pane>
-        <el-tab-pane label="一维设计 (V2.0)" name="mode5" disabled></el-tab-pane>
       </el-tabs>
       
       <div class="content">
         <Mode1Form v-if="activeMode === 'mode1'" @calculate="handleCalculate" />
         <Mode2Form v-else-if="activeMode === 'mode2'" @calculate="handleCalculate" />
         <Mode3Form v-else-if="activeMode === 'mode3'" @calculate="handleCalculate" />
-        <ResultPanel v-if="result" :result="result" />
+        <ResultPanel v-if="currentResult" :result="currentResult" :active-mode="activeMode" />
       </div>
     </main>
   </div>
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import Mode1Form from './components/modes/Mode1Form.vue'
 import Mode2Form from './components/modes/Mode2Form.vue'
 import Mode3Form from './components/modes/Mode3Form.vue'
 import ResultPanel from './components/results/ResultPanel.vue'
 
 const activeMode = ref('mode1')
-const result = ref(null)
+const results = ref({
+  mode1: null,
+  mode2: null,
+  mode3: null,
+})
+
+const currentResult = computed(() => results.value[activeMode.value])
 
 const handleCalculate = (res) => {
-  result.value = res
+  results.value[activeMode.value] = res
 }
 </script>
 

@@ -141,10 +141,21 @@ def calculate_mode1(req: Mode1Request):
                 "t_hot_out": hx_result['t_hot_out'],
             },
             "turbine": {
-                "power_shaft": turbine_result['power_shaft'],
-                "power_electric": turbine_result['power_electric'],
+                "p_in": req.cold_side.p_out,  # 涡轮进口压力 = 冷边出口压力
+                "t_in": req.cold_side.t_out,  # 涡轮进口温度 = 冷边出口温度
+                "p_out": req.turbine.p_out,
                 "t_out": turbine_result['t_out'],
                 "x_out": turbine_result['x_out'],
+                "power_shaft": turbine_result['power_shaft'],
+                "power_electric": turbine_result['power_electric'],
+                "rho_in": turbine_result['rho_in'],
+                "rho_out": turbine_result.get('rho_out', 1.2),
+                "mass_flow": turbine_result['mass_flow'],
+                "medium_type": req.cold_side.medium_type,
+                "medium": req.cold_side.medium,
+                "mix_composition": req.cold_side.mix_composition,  # 混合介质组分
+                "flow_rate": req.cold_side.flow_rate,
+                "flow_unit": req.cold_side.flow_unit,
             },
             "selection": {
                 "motor": motor,
@@ -157,7 +168,12 @@ def calculate_mode1(req: Mode1Request):
     except Exception as e:
         print(f"[ERROR] calculate_mode1 failed: {e}")
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+        # 返回友好的错误信息
+        return {
+            "success": False,
+            "error": True,
+            "error_message": f"计算失败：{str(e)[:200]}。请检查输入参数是否合理，或尝试调整参数范围。"
+        }
 
 @app.get("/api/standards/motors")
 def get_motors():

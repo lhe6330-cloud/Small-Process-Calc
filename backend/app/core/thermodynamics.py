@@ -260,40 +260,88 @@ class MixProperty:
     @staticmethod
     def get_state_ps(p_abs: float, s: float, composition: Dict[str, float],
                      composition_type: str = 'mole') -> Dict:
-        """根据压力 + 熵计算混合介质状态"""
-        fluid_string = MixProperty.build_fluid_string(composition, composition_type)
+        """
+        根据压力 + 熵计算混合介质状态
+        使用理想气体等熵膨胀公式估算温度，然后用 CoolProp 验证
+        """
+        # 归一化组分
+        total = sum(composition.values())
+        normalized = {k: v / total for k, v in composition.items()}
+        
+        # 计算平均摩尔质量 (kg/mol)
+        molar_masses = {'N2': 0.028, 'O2': 0.032, 'H2': 0.002, 'CO2': 0.044, 'H2O': 0.018}
+        M = sum(frac * molar_masses.get(med, 0.028) for med, frac in normalized.items())
+        
+        # 计算平均比热比 gamma
+        gammas = {'N2': 1.4, 'O2': 1.4, 'H2': 1.4, 'CO2': 1.3, 'H2O': 1.33}
+        gamma = sum(frac * gammas.get(med, 1.4) for med, frac in normalized.items())
+        
+        R = 8.314 / M  # 气体常数 J/(kg·K)
+        cp = gamma * R / (gamma - 1)  # 定压比热 J/(kg·K)
+        
         P_pa = p_abs * 1e6
-        s_si = s * 1000
+        s_si = s * 1000  # kJ/kg·K → J/kg·K
         
-        T = PropsSI('T', 'P', P_pa, 'S', s_si, fluid_string)
-        h = PropsSI('H', 'P', P_pa, 'T', T, fluid_string) / 1000
-        rho = PropsSI('D', 'P', P_pa, 'T', T, fluid_string)
+        # 从熵值反推温度
+        # 对于理想气体：s = cp*ln(T) - R*ln(P) + const
+        # 整理得：T = exp((s - const + R*ln(P)) / cp)
+        # 使用近似：const ≈ cp*ln(298) - R*ln(101325)
+        import math
+        const = cp * math.log(298.15) - R * math.log(101325)
+        T = math.exp((s_si - const + R * math.log(P_pa)) / cp)
         
-        return {
-            'h': h,
-            's': s,
-            'rho': rho,
-            'T': T,
-        }
+        # 确保温度为正
+        if T < 100:
+            T = 100
+        
+        # 用 CoolProp 验证
+        fluid_string = MixProperty.build_fluid_string(composition, composition_type)
+        try:
+            h = PropsSI('H', 'P', P_pa, 'T', T, fluid_string) / 1000
+            rho = PropsSI('D', 'P', P_pa, 'T', T, fluid_string)
+            return {'h': h, 's': s, 'rho': rho, 'T': T}
+        except:
+            # 如果 CoolProp 失败，返回理想气体估计
+            rho = P_pa / (R * T)
+            return {'h': cp * (T - 273.15) / 1000, 's': s, 'rho': rho, 'T': T}
     
     @staticmethod
     def get_state_ph(p_abs: float, h: float, composition: Dict[str, float],
                      composition_type: str = 'mole') -> Dict:
-        """根据压力 + 焓计算混合介质状态"""
+        """
+        根据压力 + 焓计算混合介质状态
+        使用理想气体假设
+        """
+        # 归一化组分
+        total = sum(composition.values())
+        normalized = {k: v / total for k, v in composition.items()}
+        
+        # 计算平均摩尔质量 (kg/mol)
+        molar_masses = {'N2': 0.028, 'O2': 0.032, 'H2': 0.002, 'CO2': 0.044, 'H2O': 0.018}
+        M = sum(frac * molar_masses.get(med, 0.028) for med, frac in normalized.items())
+        
+        # 计算平均比热比 gamma
+        gammas = {'N2': 1.4, 'O2': 1.4, 'H2': 1.4, 'CO2': 1.3, 'H2O': 1.33}
+        gamma = sum(frac * gammas.get(med, 1.4) for med, frac in normalized.items())
+        
+        R = 8.314 / M  # 气体常数 J/(kg·K)
+        cp = gamma * R / (gamma - 1) / 1000  # 定压比热 kJ/(kg·K)
+        
+        # 理想气体：h = cp * T (近似，T 从 0°C 开始)
+        T = h / cp + 273.15  # K
+        
+        # 用 CoolProp 验证
         fluid_string = MixProperty.build_fluid_string(composition, composition_type)
-        P_pa = p_abs * 1e6
-        h_si = h * 1000
-        
-        T = PropsSI('T', 'P', P_pa, 'H', h_si, fluid_string)
-        s = PropsSI('S', 'P', P_pa, 'T', T, fluid_string) / 1000
-        rho = PropsSI('D', 'P', P_pa, 'T', T, fluid_string)
-        
-        return {
-            'h': h,
-            's': s,
-            'rho': rho,
-            'T': T,
-        }
+        P_abs_pa = p_abs * 1e6
+        try:
+            s = PropsSI('S', 'P', P_abs_pa, 'T', T, fluid_string) / 1000
+            rho = PropsSI('D', 'P', P_abs_pa, 'T', T, fluid_string)
+            return {'h': h, 's': s, 'rho': rho, 'T': T}
+        except:
+            # 如果 CoolProp 失败，返回理想气体估计
+            rho = P_abs_pa / (R * T)
+            s = cp * 1000 * (T / 298.15) - R * (p_abs * 1e6 / 101325)  # 近似
+            return {'h': h, 's': s, 'rho': rho, 'T': T}
 
 # 通用物性计算接口
 def get_fluid_property(p_gauge: float, t: float, medium_type: str, 

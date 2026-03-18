@@ -1,358 +1,338 @@
 <template>
-  <el-dialog v-model="dialogVisible" title="⚙️ 涡轮一维通流设计" width="950px" :close-on-click-modal="false">
-    <!-- 数据来源选择 -->
-    <el-alert 
-      title="数据来源"
-      description="从模式 1/2/3 的计算结果自动带入涡轮参数"
-      type="info"
-      :closable="false"
-      show-icon
-      style="margin-bottom: 20px"
-    />
+  <div class="mode5-container">
+    <h2>⚙️ 涡轮一维通流设计</h2>
+    <p class="description">径流式（向心）涡轮的一维设计计算</p>
     
-    <el-form :model="form" label-width="140px">
-      <el-divider content-position="left">📥 涡轮参数（从 V1.3 带入，只读）</el-divider>
+    <el-card class="data-card">
+      <template #header>
+        <div class="card-header">
+          <span class="card-title">📊 涡轮参数（从 {{ activeMode === 'mode1' ? '模式 1' : activeMode === 'mode2' ? '模式 2' : '模式 3' }} - 涡轮膨胀机带入）</span>
+          <el-tag type="success">实时同步</el-tag>
+        </div>
+      </template>
       
-      <el-row :gutter="20">
-        <el-col :span="12">
-          <el-form-item label="流量">
-            <el-input :value="turbineData.flow_rate + ' ' + turbineData.flow_unit" disabled />
-          </el-form-item>
-        </el-col>
-        <el-col :span="12">
-          <el-form-item label="介质">
-            <el-input :value="mediumDisplay" disabled />
-          </el-form-item>
-        </el-col>
-      </el-row>
+      <el-descriptions :column="3" border v-if="turbineParams">
+        <el-descriptions-item label="流量">{{ turbineParams.flow_rate }} {{ turbineParams.flow_unit }}</el-descriptions-item>
+        <el-descriptions-item label="介质">{{ turbineParams.medium }}</el-descriptions-item>
+        <el-descriptions-item label="进口压力">{{ turbineParams.p_in }} MPa.G</el-descriptions-item>
+        <el-descriptions-item label="出口压力">{{ turbineParams.p_out }} MPa.G</el-descriptions-item>
+        <el-descriptions-item label="进口温度">{{ turbineParams.t_in }} °C</el-descriptions-item>
+        <el-descriptions-item label="出口温度">{{ turbineParams.t_out }} °C</el-descriptions-item>
+        <el-descriptions-item label="进口密度">{{ turbineParams.rho_in }} kg/m³</el-descriptions-item>
+        <el-descriptions-item label="出口密度">{{ turbineParams.rho_out }} kg/m³</el-descriptions-item>
+        <el-descriptions-item label="轴功率" :span="2">{{ turbineParams.power_shaft }} kW</el-descriptions-item>
+        <el-descriptions-item label="电功率" :span="2">{{ turbineParams.power_electric }} kW</el-descriptions-item>
+      </el-descriptions>
       
-      <el-row :gutter="20">
-        <el-col :span="12">
-          <el-form-item label="进口压力">
-            <el-input :value="turbineData.p_in + ' MPa.G'" disabled />
-          </el-form-item>
-        </el-col>
-        <el-col :span="12">
-          <el-form-item label="出口压力">
-            <el-input :value="turbineData.p_out + ' MPa.G'" disabled />
-          </el-form-item>
-        </el-col>
-      </el-row>
-      
-      <el-row :gutter="20">
-        <el-col :span="12">
-          <el-form-item label="进口温度">
-            <el-input :value="turbineData.t_in + ' °C'" disabled />
-          </el-form-item>
-        </el-col>
-        <el-col :span="12">
-          <el-form-item label="出口温度">
-            <el-input :value="turbineData.t_out + ' °C'" disabled />
-          </el-form-item>
-        </el-col>
-      </el-row>
-      
-      <el-row :gutter="20">
-        <el-col :span="12">
-          <el-form-item label="进口密度">
-            <el-input :value="turbineData.rho_in + ' kg/m³'" disabled />
-          </el-form-item>
-        </el-col>
-        <el-col :span="12">
-          <el-form-item label="出口密度">
-            <el-input :value="turbineData.rho_out + ' kg/m³'" disabled />
-          </el-form-item>
-        </el-col>
-      </el-row>
-      
-      <el-row :gutter="20">
-        <el-col :span="12">
-          <el-form-item label="轴功率">
-            <el-input :value="turbineData.power_shaft + ' kW'" disabled />
-          </el-form-item>
-        </el-col>
-        <el-col :span="12">
-          <el-form-item label="电功率">
-            <el-input :value="turbineData.power_electric + ' kW'" disabled />
-          </el-form-item>
-        </el-col>
-      </el-row>
-      
-      <el-divider content-position="left">⚙️ 设计参数（可编辑）</el-divider>
-      
-      <el-row :gutter="20">
-        <el-col :span="12">
-          <el-form-item label="转速 n" required>
-            <el-input-number v-model="form.speedRpm" :min="1000" :max="20000" step="500" />
-            <span style="margin-left: 10px">rpm</span>
-          </el-form-item>
-        </el-col>
-        <el-col :span="12">
-          <el-form-item label="叶片数 Z" required>
-            <el-input-number v-model="form.bladeCount" :min="9" :max="21" step="1" />
-          </el-form-item>
-        </el-col>
-      </el-row>
-      
-      <el-row :gutter="20">
-        <el-col :span="12">
-          <el-form-item label="速比 u/C₀" required>
-            <el-input-number v-model="form.speedRatio" :min="0.6" :max="0.75" step="0.01" :precision="2" />
-            <p class="form-tip">推荐范围：0.6-0.75</p>
-          </el-form-item>
-        </el-col>
-        <el-col :span="12">
-          <el-form-item label="反动度 Ω" required>
-            <el-input-number v-model="form.reaction" :min="0" :max="100" step="5" />
-            <span style="margin-left: 10px">%</span>
-            <p class="form-tip">推荐范围：0-100%</p>
-          </el-form-item>
-        </el-col>
-      </el-row>
-    </el-form>
+      <el-empty v-else description="请先进行模式计算" />
+    </el-card>
     
-    <div style="text-align: center; margin: 20px 0">
-      <el-button type="primary" size="large" @click="calculate" :loading="calculating">
-        🚀 开始计算
-      </el-button>
-      <el-button @click="reset">重置</el-button>
-    </div>
+    <!-- 设计参数 -->
+    <el-card class="design-card" v-if="turbineParams">
+      <template #header>
+        <span class="card-title">⚙️ 设计参数（可编辑）</span>
+      </template>
+      
+      <el-form :model="designParams" label-width="140px">
+        <el-row :gutter="20">
+          <el-col :span="12">
+            <el-form-item label="* 转速 n">
+              <el-input-number v-model="designParams.speedRpm" :min="1000" :max="20000" step="500" />
+              <span style="margin-left: 10px">rpm</span>
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="* 叶片数 Z">
+              <el-input-number v-model="designParams.bladeCount" :min="9" :max="21" step="1" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+        
+        <el-row :gutter="20">
+          <el-col :span="12">
+            <el-form-item label="* 速比 u/C₀">
+              <el-input-number v-model="designParams.speedRatio" :min="0.6" :max="0.75" :step="0.01" :precision="2" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="* 反动度 Ω">
+              <el-input-number v-model="designParams.reaction" :min="0" :max="100" step="5" />
+              <span style="margin-left: 10px">%</span>
+            </el-form-item>
+          </el-col>
+        </el-row>
+        
+        <el-form-item>
+          <el-button type="primary" @click="calculateTurbine" :loading="calculating">
+            🚀 开始计算
+          </el-button>
+          <el-button @click="exportPDF" :loading="exporting">📄 导出 PDF</el-button>
+          <el-button @click="exportExcel" :loading="exporting">📊 导出 Excel</el-button>
+        </el-form-item>
+      </el-form>
+    </el-card>
     
     <!-- 计算结果 -->
-    <div v-if="calcResult && calcResult.success">
-      <el-divider />
+    <el-card class="result-card" v-if="turbineResult">
+      <template #header>
+        <span class="card-title">📊 计算结果</span>
+        <el-tag :type="turbineResult.performance?.match ? 'success' : 'warning'">
+          {{ turbineResult.performance?.match ? '✅ 验证通过' : '⚠️ 需校核' }}
+        </el-tag>
+      </template>
+      
+      <h4>📐 基本尺寸</h4>
+      <el-descriptions :column="2" border>
+        <el-descriptions-item label="叶轮外径 D₁">{{ turbineResult.dimensions?.D1 }} mm</el-descriptions-item>
+        <el-descriptions-item label="叶轮内径 D₂">{{ turbineResult.dimensions?.D2 }} mm</el-descriptions-item>
+        <el-descriptions-item label="进口叶片高度 b₁">{{ turbineResult.dimensions?.b1 }} mm</el-descriptions-item>
+        <el-descriptions-item label="出口叶片高度 b₂">{{ turbineResult.dimensions?.b2 }} mm</el-descriptions-item>
+        <el-descriptions-item label="叶片数 Z" :span="2">{{ turbineResult.dimensions?.Z }}</el-descriptions-item>
+      </el-descriptions>
+      
+      <h4 style="margin-top: 20px">🔺 速度三角形 - 进口</h4>
+      <el-descriptions :column="3" border>
+        <el-descriptions-item label="C₁">{{ turbineResult.velocity_triangle_in?.C1 }} m/s</el-descriptions-item>
+        <el-descriptions-item label="W₁">{{ turbineResult.velocity_triangle_in?.W1 }} m/s</el-descriptions-item>
+        <el-descriptions-item label="U₁">{{ turbineResult.velocity_triangle_in?.U1 }} m/s</el-descriptions-item>
+        <el-descriptions-item label="α₁">{{ turbineResult.velocity_triangle_in?.alpha1 }}°</el-descriptions-item>
+        <el-descriptions-item label="β₁">{{ turbineResult.velocity_triangle_in?.beta1 }}°</el-descriptions-item>
+      </el-descriptions>
+      
+      <h4 style="margin-top: 20px">🔺 速度三角形 - 出口</h4>
+      <el-descriptions :column="3" border>
+        <el-descriptions-item label="C₂">{{ turbineResult.velocity_triangle_out?.C2 }} m/s</el-descriptions-item>
+        <el-descriptions-item label="W₂">{{ turbineResult.velocity_triangle_out?.W2 }} m/s</el-descriptions-item>
+        <el-descriptions-item label="U₂">{{ turbineResult.velocity_triangle_out?.U2 }} m/s</el-descriptions-item>
+        <el-descriptions-item label="α₂">{{ turbineResult.velocity_triangle_out?.alpha2 }}°</el-descriptions-item>
+        <el-descriptions-item label="β₂">{{ turbineResult.velocity_triangle_out?.beta2 }}°</el-descriptions-item>
+      </el-descriptions>
+      
+      <h4 style="margin-top: 20px">🔥 热力参数</h4>
+      <el-descriptions :column="2" border>
+        <el-descriptions-item label="级效率 η">{{ turbineResult.thermo_params?.eta }}%</el-descriptions-item>
+        <el-descriptions-item label="反动度 Ω">{{ turbineResult.thermo_params?.omega }}%</el-descriptions-item>
+        <el-descriptions-item label="速比 u/C₀">{{ turbineResult.thermo_params?.speed_ratio }}</el-descriptions-item>
+        <el-descriptions-item label="计算功率">{{ turbineResult.performance?.P_calc }} kW</el-descriptions-item>
+        <el-descriptions-item label="输入功率">{{ turbineResult.performance?.P_input }} kW</el-descriptions-item>
+        <el-descriptions-item label="压降 ΔP">{{ turbineResult.performance?.delta_p }} MPa</el-descriptions-item>
+      </el-descriptions>
       
       <el-alert 
-        :title="calcResult.performance.match ? '✅ 功率验证通过' : '⚠️ 功率偏差较大，请检查参数'"
-        :type="calcResult.performance.match ? 'success' : 'warning'"
+        :title="turbineResult.message" 
+        type="success"
         :closable="false"
         show-icon
-        style="margin-bottom: 20px"
+        style="margin-top: 20px"
       />
-      
-      <el-row :gutter="20">
-        <el-col :span="12">
-          <el-card>
-            <template #header>
-              <span style="font-weight: 600">📐 基本尺寸</span>
-            </template>
-            <el-descriptions :column="1" border>
-              <el-descriptions-item label="叶轮外径 D₁">{{ calcResult.dimensions.D1 }} mm</el-descriptions-item>
-              <el-descriptions-item label="叶轮内径 D₂">{{ calcResult.dimensions.D2 }} mm</el-descriptions-item>
-              <el-descriptions-item label="进口叶片高度 b₁">{{ calcResult.dimensions.b1 }} mm</el-descriptions-item>
-              <el-descriptions-item label="出口叶片高度 b₂">{{ calcResult.dimensions.b2 }} mm</el-descriptions-item>
-              <el-descriptions-item label="叶片数 Z">{{ calcResult.dimensions.Z }}</el-descriptions-item>
-            </el-descriptions>
-          </el-card>
-        </el-col>
-        
-        <el-col :span="12">
-          <el-card>
-            <template #header>
-              <span style="font-weight: 600">🔥 热力参数</span>
-            </template>
-            <el-descriptions :column="1" border>
-              <el-descriptions-item label="级效率 η">{{ calcResult.thermo_params.eta }} %</el-descriptions-item>
-              <el-descriptions-item label="反动度 Ω">{{ calcResult.thermo_params.omega }} %</el-descriptions-item>
-              <el-descriptions-item label="速比 u/C₀">{{ calcResult.thermo_params.speed_ratio }}</el-descriptions-item>
-              <el-descriptions-item label="等熵速度 C₀">{{ calcResult.thermo_params.C0 }} m/s</el-descriptions-item>
-            </el-descriptions>
-          </el-card>
-        </el-col>
-      </el-row>
-      
-      <el-row :gutter="20" style="margin-top: 20px">
-        <el-col :span="12">
-          <el-card>
-            <template #header>
-              <span style="font-weight: 600">📊 速度三角形 - 进口</span>
-            </template>
-            <div class="velocity-triangle">
-              <div class="vt-row">
-                <span class="vt-label">绝对速度 C₁</span>
-                <span class="vt-value">{{ calcResult.velocity_triangle_in.C1 }} m/s</span>
-              </div>
-              <div class="vt-row">
-                <span class="vt-label">相对速度 W₁</span>
-                <span class="vt-value">{{ calcResult.velocity_triangle_in.W1 }} m/s</span>
-              </div>
-              <div class="vt-row">
-                <span class="vt-label">圆周速度 U₁</span>
-                <span class="vt-value">{{ calcResult.velocity_triangle_in.U1 }} m/s</span>
-              </div>
-              <div class="vt-row">
-                <span class="vt-label">绝对气流角 α₁</span>
-                <span class="vt-value">{{ calcResult.velocity_triangle_in.alpha1 }} °</span>
-              </div>
-              <div class="vt-row">
-                <span class="vt-label">相对气流角 β₁</span>
-                <span class="vt-value">{{ calcResult.velocity_triangle_in.beta1 }} °</span>
-              </div>
-            </div>
-          </el-card>
-        </el-col>
-        
-        <el-col :span="12">
-          <el-card>
-            <template #header>
-              <span style="font-weight: 600">📊 速度三角形 - 出口</span>
-            </template>
-            <div class="velocity-triangle">
-              <div class="vt-row">
-                <span class="vt-label">绝对速度 C₂</span>
-                <span class="vt-value">{{ calcResult.velocity_triangle_out.C2 }} m/s</span>
-              </div>
-              <div class="vt-row">
-                <span class="vt-label">相对速度 W₂</span>
-                <span class="vt-value">{{ calcResult.velocity_triangle_out.W2 }} m/s</span>
-              </div>
-              <div class="vt-row">
-                <span class="vt-label">圆周速度 U₂</span>
-                <span class="vt-value">{{ calcResult.velocity_triangle_out.U2 }} m/s</span>
-              </div>
-              <div class="vt-row">
-                <span class="vt-label">绝对气流角 α₂</span>
-                <span class="vt-value">{{ calcResult.velocity_triangle_out.alpha2 }} °</span>
-              </div>
-              <div class="vt-row">
-                <span class="vt-label">相对气流角 β₂</span>
-                <span class="vt-value">{{ calcResult.velocity_triangle_out.beta2 }} °</span>
-              </div>
-            </div>
-          </el-card>
-        </el-col>
-      </el-row>
-      
-      <el-card style="margin-top: 20px">
-        <template #header>
-          <span style="font-weight: 600">✅ 性能验证</span>
-        </template>
-        <el-descriptions :column="3" border>
-          <el-descriptions-item label="计算功率">{{ calcResult.performance.P_calc }} kW</el-descriptions-item>
-          <el-descriptions-item label="输入功率">{{ calcResult.performance.P_input }} kW</el-descriptions-item>
-          <el-descriptions-item label="压降">{{ calcResult.performance.delta_p }} MPa</el-descriptions-item>
-        </el-descriptions>
-      </el-card>
-      
-      <div style="text-align: right; margin-top: 20px">
-        <el-button @click="calcResult = null">重新计算</el-button>
-        <el-button type="success" @click="exportResult">📄 导出报告</el-button>
-      </div>
-    </div>
-  </el-dialog>
+    </el-card>
+  </div>
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, reactive, computed, watch } from 'vue'
 
-const props = defineProps(['modelValue', 'turbineData'])
-const emit = defineEmits(['update:modelValue', 'calculate'])
-
-const dialogVisible = computed({
-  get: () => props.modelValue,
-  set: (val) => emit('update:modelValue', val)
+const props = defineProps({
+  activeMode: {
+    type: String,
+    default: 'mode1',
+  },
+  result: {
+    type: Object,
+    default: null,
+  },
 })
 
 const calculating = ref(false)
-const calcResult = ref(null)
+const exporting = ref(false)
+const turbineResult = ref(null)
 
-const form = ref({
+const designParams = reactive({
   speedRpm: 3000,
   bladeCount: 13,
   speedRatio: 0.65,
   reaction: 50,
 })
 
-const mediumDisplay = computed(() => {
-  const data = props.turbineData || {}
-  if (data.composition) {
-    const parts = Object.entries(data.composition)
-      .filter(([_, v]) => v > 0.01)
-      .map(([k, v]) => `${k}(${(v * 100).toFixed(0)}%)`)
-    return parts.join(' + ') || data.medium || '-'
+// 从父组件传递的结果中计算涡轮参数
+const turbineParams = computed(() => {
+  if (!props.result || !props.result.turbine) {
+    return null
   }
-  return data.medium || '-'
+  
+  const turbine = props.result.turbine
+  
+  // 介质名称转换
+  const mediumMap = {
+    'H2O': '水/水蒸气',
+    'N2': 'N₂',
+    'O2': 'O₂',
+    'CO2': 'CO₂',
+    'H2': 'H₂',
+    'Air': '空气',
+  }
+  const mediumName = mediumMap[turbine.medium || 'N2'] || turbine.medium || 'N₂'
+  
+  return {
+    flow_rate: turbine.flow_rate,
+    flow_unit: turbine.flow_unit,
+    medium: mediumName,
+    p_in: turbine.p_in,
+    p_out: turbine.p_out,
+    t_in: turbine.t_in,
+    t_out: typeof turbine.t_out === 'number' ? parseFloat(turbine.t_out.toFixed(4)) : turbine.t_out,
+    rho_in: turbine.rho_in,
+    rho_out: turbine.rho_out,
+    power_shaft: typeof turbine.power_shaft === 'number' ? parseFloat(turbine.power_shaft.toFixed(4)) : turbine.power_shaft,
+    power_electric: turbine.power_electric ? (typeof turbine.power_electric === 'number' ? parseFloat(turbine.power_electric.toFixed(4)) : turbine.power_electric) : null,
+  }
 })
 
-const calculate = async () => {
+const calculateTurbine = async () => {
+  if (!turbineParams.value) {
+    ElMessage.warning('请先进行模式计算')
+    return
+  }
+  
   calculating.value = true
+  
   try {
-    const data = props.turbineData || {}
-    const response = await fetch('/api/calculate/mode5', {
+    const response = await fetch('http://localhost:8000/api/calculate/mode5', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        source_mode: 'mode1',
-        flow_rate: data.flow_rate || 1000,
-        flow_unit: data.flow_unit || 'Nm3/h',
-        p_in: data.p_in || 0.5,
-        p_out: data.p_out || 0.1,
-        t_in: data.t_in || 200,
-        t_out: data.t_out || 85,
-        rho_in: data.rho_in || 4.5,
-        rho_out: data.rho_out || 1.2,
-        power_shaft: data.power_shaft || 45.2,
-        speed_rpm: form.value.speedRpm,
-        blade_count: form.value.bladeCount,
-        speed_ratio: form.value.speedRatio,
-        reaction: form.value.reaction,
+        source_mode: props.activeMode,
+        flow_rate: turbineParams.value.flow_rate,
+        flow_unit: turbineParams.value.flow_unit,
+        p_in: turbineParams.value.p_in,
+        p_out: turbineParams.value.p_out,
+        t_in: turbineParams.value.t_in,
+        t_out: turbineParams.value.t_out,
+        rho_in: turbineParams.value.rho_in,
+        rho_out: turbineParams.value.rho_out,
+        power_shaft: turbineParams.value.power_shaft,
+        speed_rpm: designParams.speedRpm,
+        blade_count: designParams.bladeCount,
+        speed_ratio: designParams.speedRatio,
+        reaction: designParams.reaction,
       }),
     })
-    calcResult.value = await response.json()
-    emit('calculate', calcResult.value)
+    
+    const data = await response.json()
+    if (data.success) {
+      turbineResult.value = data
+      ElMessage.success('涡轮一维设计计算完成')
+    } else {
+      ElMessage.error('计算失败：' + (data.detail || data.message))
+    }
   } catch (e) {
-    console.error('Turbine 1D calc failed:', e)
-    alert('计算失败：' + e.message)
+    ElMessage.error('请求失败：' + e.message)
   } finally {
     calculating.value = false
   }
 }
 
-const reset = () => {
-  form.value = {
-    speedRpm: 3000,
-    bladeCount: 13,
-    speedRatio: 0.65,
-    reaction: 50,
+const exportPDF = async () => {
+  if (!turbineParams.value) {
+    ElMessage.warning('请先进行模式计算')
+    return
   }
-  calcResult.value = null
+  
+  exporting.value = true
+  try {
+    const response = await fetch('http://localhost:8000/api/export/pdf/mode5', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        source_mode: props.activeMode,
+        flow_rate: turbineParams.value.flow_rate,
+        flow_unit: turbineParams.value.flow_unit,
+        p_in: turbineParams.value.p_in,
+        p_out: turbineParams.value.p_out,
+        t_in: turbineParams.value.t_in,
+        t_out: turbineParams.value.t_out,
+        rho_in: turbineParams.value.rho_in,
+        rho_out: turbineParams.value.rho_out,
+        power_shaft: turbineParams.value.power_shaft,
+        speed_rpm: designParams.speedRpm,
+        blade_count: designParams.bladeCount,
+        speed_ratio: designParams.speedRatio,
+        reaction: designParams.reaction,
+      }),
+    })
+    
+    if (response.ok) {
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `turbine_${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.pdf`
+      a.click()
+      window.URL.revokeObjectURL(url)
+      ElMessage.success('PDF 导出成功')
+    } else {
+      ElMessage.error('导出失败')
+    }
+  } catch (e) {
+    ElMessage.error('导出失败：' + e.message)
+  } finally {
+    exporting.value = false
+  }
 }
 
-const exportResult = () => {
-  // TODO: 导出 PDF/Excel
-  alert('导出功能开发中...')
-}
-
-watch(() => dialogVisible.value, (val) => {
-  if (!val) {
-    calcResult.value = null
+const exportExcel = async () => {
+  if (!turbineParams.value) {
+    ElMessage.warning('请先进行模式计算')
+    return
   }
-})
+  
+  exporting.value = true
+  try {
+    const response = await fetch('http://localhost:8000/api/export/excel/mode5', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        source_mode: props.activeMode,
+        flow_rate: turbineParams.value.flow_rate,
+        flow_unit: turbineParams.value.flow_unit,
+        p_in: turbineParams.value.p_in,
+        p_out: turbineParams.value.p_out,
+        t_in: turbineParams.value.t_in,
+        t_out: turbineParams.value.t_out,
+        rho_in: turbineParams.value.rho_in,
+        rho_out: turbineParams.value.rho_out,
+        power_shaft: turbineParams.value.power_shaft,
+        speed_rpm: designParams.speedRpm,
+        blade_count: designParams.bladeCount,
+        speed_ratio: designParams.speedRatio,
+        reaction: designParams.reaction,
+      }),
+    })
+    
+    if (response.ok) {
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `turbine_${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.xlsx`
+      a.click()
+      window.URL.revokeObjectURL(url)
+      ElMessage.success('Excel 导出成功')
+    } else {
+      ElMessage.error('导出失败')
+    }
+  } catch (e) {
+    ElMessage.error('导出失败：' + e.message)
+  } finally {
+    exporting.value = false
+  }
+}
 </script>
 
 <style scoped>
-.form-tip {
-  color: #999;
-  font-size: 12px;
-  margin-top: 5px;
-}
-.velocity-triangle {
-  padding: 10px 0;
-}
-.vt-row {
-  display: flex;
-  justify-content: space-between;
-  padding: 8px 15px;
-  border-bottom: 1px solid #eee;
-}
-.vt-row:last-child {
-  border-bottom: none;
-}
-.vt-label {
-  color: #666;
-}
-.vt-value {
-  font-weight: 600;
-  color: #333;
-}
+.mode5-container { padding: 20px; }
+.card-header { display: flex; justify-content: space-between; align-items: center; }
+.card-title { font-weight: 600; color: #F1F5F9; }
+.form-card, .data-card, .design-card, .result-card { margin-bottom: 20px; }
+h4 { color: #F1F5F9; margin: 15px 0 10px 0; font-size: 16px; }
 </style>
