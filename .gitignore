@@ -54,3 +54,6 @@ publish-github.bat
 # OS
 Thumbs.db
 .DS_Store
+/**/__pycache__/
+node_modules/
+*.pyc

@@ -102,7 +102,11 @@ def calculate_mode1(req: Mode1Request):
             mix_composition=req.cold_side.mix_composition,
             composition_type=req.cold_side.composition_type,
         )
-        
+
+        # 检查涡轮计算是否失败（如入口温度过低）
+        if not turbine_result.get('success', True):
+            return turbine_result
+
         motor = select_motor(turbine_result['power_shaft'])
         
         vol_in = calculate_pipe_flow(
@@ -146,6 +150,8 @@ def calculate_mode1(req: Mode1Request):
                 "p_out": req.turbine.p_out,
                 "t_out": turbine_result['t_out'],
                 "x_out": turbine_result['x_out'],
+                "liquid_percent": turbine_result.get('liquid_percent'),
+                "liquid_warning": turbine_result.get('liquid_warning'),
                 "power_shaft": turbine_result['power_shaft'],
                 "power_electric": turbine_result['power_electric'],
                 "rho_in": turbine_result['rho_in'],
@@ -184,6 +190,13 @@ def get_motors():
 def get_pipes():
     from app.core.selection import PIPES
     return {"pipes": PIPES}
+
+@app.get("/api/thermo/water/saturation")
+def get_water_saturation_temp(p: float):
+    """获取水的饱和温度 (MPa.A → °C)"""
+    from app.core.thermodynamics import WaterProperty
+    t_sat = WaterProperty.get_saturation_temp(p)
+    return {"saturation_temp": t_sat}
 
 @app.post("/api/calculate/mode2")
 def calculate_mode2_api(req: Mode2Request):

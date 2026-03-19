@@ -1,13 +1,28 @@
 """
 涡轮发电机组计算模块
+支持：
+- 单一介质（H2O/N2/O2/Air/CO2/H2）
+- 混合介质（N2+O2+H2O 等）
+- 进口含液自动判断（0-5% 含水量）
+- 相变潜热修正（联合迭代能量平衡）
 """
 import sys
 sys.stdout.reconfigure(encoding='utf-8')
 
 try:
-    from .thermodynamics import gauge_to_absolute, WaterProperty, GasProperty, MixProperty, get_fluid_property
+    from .thermodynamics import (
+        gauge_to_absolute, WaterProperty, GasProperty, MixProperty,
+        get_fluid_property, get_water_saturation_pressure, get_water_latent_heat,
+        get_gas_cp
+    )
+    from .vle import calc_inlet_liquid_frac
 except ImportError:
-    from thermodynamics import gauge_to_absolute, WaterProperty, GasProperty, MixProperty, get_fluid_property
+    from thermodynamics import (
+        gauge_to_absolute, WaterProperty, GasProperty, MixProperty,
+        get_fluid_property, get_water_saturation_pressure, get_water_latent_heat,
+        get_gas_cp
+    )
+    from vle import calc_inlet_liquid_frac
 from typing import Dict
 
 def calculate_turbine(
@@ -16,17 +31,76 @@ def calculate_turbine(
     medium_type: str, medium: str = None,
     mix_composition: Dict = None, composition_type: str = 'mole'
 ) -> Dict:
-    """涡轮计算"""
+    """
+    涡轮计算（支持进口含液和相变潜热修正）
+
+    计算流程：
+    1. 进口 Flash 计算 → 得到进口含液量
+    2. 两相进口能量平衡 → 计算混合焓/熵
+    3. 等熵膨胀 + 出口潜热修正（联合迭代）→ 得到出口温度和含液量
+    """
     p_in_abs = gauge_to_absolute(p_in_gauge)
     p_out_abs = gauge_to_absolute(p_out_gauge)
-    
-    # 入口状态
-    state_in = get_fluid_property(p_in_gauge, t_in, medium_type, medium, mix_composition, composition_type)
-    h_in = state_in['h']
-    s_in = state_in['s']
-    rho_in = state_in['rho']
-    
-    # 等熵膨胀
+
+    # ============ 步骤 1: 入口校验和进口 Flash ============
+
+    # 单一介质 H2O 的入口校验
+    if medium_type == 'single' and medium == 'H2O':
+        T_sat = WaterProperty.get_saturation_temp(p_in_abs)
+        if t_in <= T_sat:
+            return {
+                'success': False,
+                'error': True,
+                'error_message': f'涡轮入口温度过低！当前温度 {t_in}°C，该压力下的饱和温度为 {T_sat:.2f}°C。请确保入口为过热蒸汽状态。'
+            }
+        inlet_liquid_frac = 0.0  # 过热蒸汽，无液相
+    elif medium_type == 'mix' and mix_composition:
+        # 混合介质：自动计算进口含液量
+        inlet_liquid_frac = calc_inlet_liquid_frac(p_in_gauge, t_in, mix_composition)
+    else:
+        inlet_liquid_frac = 0.0  # 单一气体（N2/O2 等），无液相
+
+    # ============ 步骤 2: 进口状态计算 ============
+
+    # 初始化 vapor_comp（用于后续冷凝计算）
+    vapor_comp = mix_composition if medium_type == 'mix' else None
+
+    # 计算进口焓/熵（考虑含液）
+    if medium_type == 'mix' and inlet_liquid_frac > 0.001:
+        # 两相进口：分别计算气相和液相
+
+        # 气相组成（扣除冷凝的水）
+        y_h2o_total = mix_composition.get('H2O', 0)
+        y_h2o_vapor = y_h2o_total - inlet_liquid_frac
+        vapor_comp = {k: v for k, v in mix_composition.items()}
+        vapor_comp['H2O'] = y_h2o_vapor
+        # 归一化
+        total_vapor = sum(vapor_comp.values())
+        vapor_comp = {k: v / total_vapor for k, v in vapor_comp.items()}
+
+        # 气相焓/熵
+        state_in_vapor = MixProperty.get_state(p_in_abs, t_in, vapor_comp, composition_type)
+        h_in_vapor = state_in_vapor['h']
+        s_in_vapor = state_in_vapor['s']
+
+        # 液相焓/熵（纯水）
+        h_in_liquid = WaterProperty.get_state(p_in_abs, t_in)['h']
+        s_in_liquid = WaterProperty.get_state(p_in_abs, t_in)['s']
+
+        # 混合焓/熵（质量加权平均）
+        # 近似：inlet_liquid_frac 是质量分数
+        h_in = (1 - inlet_liquid_frac) * h_in_vapor + inlet_liquid_frac * h_in_liquid
+        s_in = (1 - inlet_liquid_frac) * s_in_vapor + inlet_liquid_frac * s_in_liquid
+        rho_in = state_in_vapor['rho']  # 用气相密度近似
+    else:
+        # 单相进口（或含液量可忽略）
+        state_in = get_fluid_property(p_in_gauge, t_in, medium_type, medium, mix_composition, composition_type)
+        h_in = state_in['h']
+        s_in = state_in['s']
+        rho_in = state_in['rho']
+
+    # ============ 步骤 3: 等熵膨胀（无相变近似） ============
+
     if medium_type == 'single' and medium == 'H2O':
         state_out_s = WaterProperty.get_state_ps(p_out_abs, s_in)
         h_out_s = state_out_s['h']
@@ -34,64 +108,130 @@ def calculate_turbine(
         state_out_s = GasProperty.get_state_ps(p_out_abs, s_in, medium)
         h_out_s = state_out_s['h']
     else:
-        # 混合介质：使用理想气体等熵膨胀公式
-        molar_masses = {'N2': 0.028, 'O2': 0.032, 'H2': 0.002, 'CO2': 0.044, 'H2O': 0.018}
-        gammas = {'N2': 1.4, 'O2': 1.4, 'H2': 1.4, 'CO2': 1.3, 'H2O': 1.33}
-        
-        total = sum(mix_composition.values())
-        normalized = {k: v / total for k, v in mix_composition.items()}
-        
-        M = sum(frac * molar_masses.get(med, 0.028) for med, frac in normalized.items())
-        gamma = sum(frac * gammas.get(med, 1.4) for med, frac in normalized.items())
-        
-        T_in = t_in + 273.15  # K
-        # 等熵膨胀：T2 = T1 * (P2/P1)^((γ-1)/γ)
-        exponent = (gamma - 1) / gamma
-        pressure_ratio = p_out_abs / p_in_abs
-        T_out_s = T_in * (pressure_ratio ** exponent)
-        
-        # 计算等熵焓值 (kJ/kg)
-        R = 8.314 / M  # J/(kg·K)
-        cp = gamma * R / (gamma - 1) / 1000  # kJ/(kg·K)
-        h_in_ig = cp * (T_in - 273.15)
-        h_out_s = cp * (T_out_s - 273.15)
-        
-        state_out_s = {'h': h_out_s, 'T': T_out_s}
-    
-    # 实际膨胀
+        # 混合介质：使用 CoolProp SRK 模型计算等熵膨胀
+        state_out_s = MixProperty.get_state_ps(p_out_abs, s_in, mix_composition, composition_type)
+        h_out_s = state_out_s['h']
+
+    # 实际膨胀（考虑绝热效率）
     eta = adiabatic_efficiency / 100.0
-    h_out = h_in - (h_in - h_out_s) * eta
-    
-    # 实际出口状态
+    h_out_no_phase = h_in - (h_in - h_out_s) * eta
+
+    # ============ 步骤 4: 相变潜热修正（联合迭代） ============
+
+    liquid_percent = None
+    liquid_warning = None
+    t_out = None
+
     if medium_type == 'single' and medium == 'H2O':
+        # 单一 H2O：用 IF97 直接计算
         state_out = WaterProperty.get_state_ph(p_out_abs, h_out)
         x_out = state_out.get('x')
-    elif medium_type == 'single':
-        state_out = GasProperty.get_state_ph(p_out_abs, h_out, medium)
-        x_out = None
+        t_out = state_out['T'] - 273.15
+        if x_out is not None:
+            liquid_percent = (1 - x_out) * 100
+            if liquid_percent > 5:
+                liquid_warning = f'出口含液率 {liquid_percent:.1f}%，超过 5% 建议值！'
+
+    elif medium_type == 'mix' and mix_composition and mix_composition.get('H2O', 0) > 0.005:
+        # 混合介质含水：需要相变潜热修正
+
+        # 先从无相变焓反推温度初值
+        try:
+            state_out_guess = MixProperty.get_state_ph(p_out_abs, h_out_no_phase, mix_composition, composition_type)
+            t_out_guess = state_out_guess['T'] - 273.15
+        except:
+            t_out_guess = 0  # 默认 0°C
+
+        # 迭代求解能量平衡 + 相平衡（使用阻尼因子防止震荡）
+        q_cond = 0  # 初始化
+        damping = 0.3  # 阻尼因子，0.3 表示每次只更新 30%
+        t_out_prev = t_out_guess
+
+        for iteration in range(50):
+            # 温度边界检查（水的饱和温度计算范围 0.01-370°C）
+            t_out_clamped = max(0.01, min(370, t_out_guess))
+
+            # 1. 计算该温度下的饱和蒸气压
+            p_sat = get_water_saturation_pressure(t_out_clamped)  # MPa.A
+
+            # 2. 计算冷凝量
+            y_h2o_vapor_in = vapor_comp.get('H2O', 0) if vapor_comp else mix_composition.get('H2O', 0)
+            y_h2o_max = p_sat / p_out_abs if p_out_abs > 0 else 0
+
+            if y_h2o_vapor_in > y_h2o_max:
+                # 有冷凝
+                liquid_frac_new = y_h2o_vapor_in - y_h2o_max
+            else:
+                # 无冷凝（或蒸发）
+                liquid_frac_new = 0
+
+            # 3. 冷凝放热
+            if liquid_frac_new > 0.001:
+                h_fg = get_water_latent_heat(t_out_clamped)  # kJ/kg
+                q_cond = liquid_frac_new * h_fg
+            else:
+                q_cond = 0
+
+            # 4. 修正出口焓（冷凝放热增加系统焓）
+            h_out_corrected = h_out_no_phase + q_cond
+
+            # 5. 从修正焓反推温度
+            try:
+                state_new = MixProperty.get_state_ph(p_out_abs, h_out_corrected, mix_composition, composition_type)
+                t_out_new = state_new['T'] - 273.15
+            except:
+                t_out = t_out_clamped
+                break
+
+            # 6. 收敛判断
+            if abs(t_out_new - t_out_guess) < 0.1:
+                t_out = t_out_new
+                break
+
+            # 7. 阻尼更新（防止震荡）
+            if iteration > 0 and (t_out_new - t_out_guess) * (t_out_guess - t_out_prev) < 0:
+                # 检测到震荡，减小阻尼
+                damping *= 0.5
+
+            t_out_prev = t_out_guess
+            t_out_guess = t_out_guess + damping * (t_out_new - t_out_guess)
+        else:
+            # 迭代 50 次未收敛，用当前值
+            t_out = t_out_guess
+
+        # 计算最终含液量
+        p_sat = get_water_saturation_pressure(t_out)
+        y_h2o_vapor_in = vapor_comp.get('H2O', 0) if vapor_comp else mix_composition.get('H2O', 0)
+        y_h2o_max = p_sat / p_out_abs if p_out_abs > 0 else 0
+
+        if y_h2o_vapor_in > y_h2o_max:
+            liquid_frac_total = inlet_liquid_frac + (y_h2o_vapor_in - y_h2o_max)
+            liquid_percent = liquid_frac_total * 100
+
+            if liquid_percent > 5:
+                liquid_warning = f'出口含液率 {liquid_percent:.1f}%，超过 5% 建议值！'
+
+        # 计算最终出口焓（用于功率计算）
+        h_out = h_out_no_phase + q_cond
+        x_out = None  # 混合物不计算干度
+
     else:
-        # 混合介质：从焓值反推温度
-        molar_masses = {'N2': 0.028, 'O2': 0.032, 'H2': 0.002, 'CO2': 0.044, 'H2O': 0.018}
-        gammas = {'N2': 1.4, 'O2': 1.4, 'H2': 1.4, 'CO2': 1.3, 'H2O': 1.33}
-        
-        total = sum(mix_composition.values())
-        normalized = {k: v / total for k, v in mix_composition.items()}
-        
-        M = sum(frac * molar_masses.get(med, 0.028) for med, frac in normalized.items())
-        gamma = sum(frac * gammas.get(med, 1.4) for med, frac in normalized.items())
-        
-        R = 8.314 / M  # J/(kg·K)
-        cp = gamma * R / (gamma - 1) / 1000  # kJ/(kg·K)
-        
-        # 从焓值反推温度：h = cp * (T - 273.15)
-        # T = h / cp + 273.15
-        T_out = h_out / cp + 273.15
-        
-        state_out = {'h': h_out, 'T': T_out}
-        x_out = None
-    
-    t_out = state_out['T'] - 273.15
-    
+        # 不含水或单一气体：无相变
+        h_out = h_out_no_phase  # 无相变时，出口焓=实际膨胀焓
+        if medium_type == 'single':
+            state_out = GasProperty.get_state_ph(p_out_abs, h_out, medium)
+            t_out = state_out['T'] - 273.15
+            x_out = None
+        else:
+            try:
+                state_out = MixProperty.get_state_ph(p_out_abs, h_out, mix_composition, composition_type)
+                t_out = state_out['T'] - 273.15
+            except:
+                t_out = 0  # 计算失败时的默认值
+            x_out = None
+
+    # ============ 步骤 5: 质量流量和功率计算 ============
+
     # 质量流量
     if flow_unit == 'T/h':
         mass_flow = flow_rate * 1000 / 3600
@@ -105,16 +245,19 @@ def calculate_turbine(
         mass_flow = flow_rate * rho_std / 3600
     else:
         raise ValueError(f"Unknown flow_unit: {flow_unit}")
-    
-    # 功率
+
+    # 功率（用实际焓降计算）
     power_shaft = mass_flow * (h_in - h_out)
     power_electric = power_shaft * 0.9
-    
+
     return {
+        'success': True,
         'power_shaft': power_shaft,
         'power_electric': power_electric,
         't_out': t_out,
         'x_out': x_out,
+        'liquid_percent': liquid_percent,
+        'liquid_warning': liquid_warning,
         'h_in': h_in,
         'h_out': h_out,
         'mass_flow': mass_flow,

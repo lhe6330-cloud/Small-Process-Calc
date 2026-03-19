@@ -118,7 +118,27 @@ const submit = async () => {
       return
     }
   }
-  
+
+  // H2O 介质入口温度预校验
+  if (form.turbine_in.medium_type === 'single' && form.turbine_in.medium === 'H2O') {
+    loading.value = true
+    try {
+      // 调用后端 API 获取饱和温度
+      const p_abs = form.turbine_in.p_in + 0.101325  // MPa.G → MPa.A
+      const satRes = await axios.get('http://localhost:8000/api/thermo/water/saturation', { params: { p: p_abs } })
+      const t_sat = satRes.data.saturation_temp
+
+      if (form.turbine_in.t_in <= t_sat) {
+        alert(`⚠️ 涡轮入口温度过低！\n\n当前温度：${form.turbine_in.t_in}°C\n饱和温度：${t_sat.toFixed(2)}°C\n\n请确保入口为过热蒸汽状态（入口温度需高于饱和温度）。`)
+        loading.value = false
+        return
+      }
+    } catch (e) {
+      // 如果 API 调用失败，继续让后端校验
+      console.warn('获取饱和温度失败，继续提交给后端校验')
+    }
+  }
+
   loading.value = true
   try {
     // 构建请求数据
@@ -129,6 +149,7 @@ const submit = async () => {
           flow_rate: form.turbine_in.flow_rate,
           flow_unit: form.turbine_in.flow_unit,
           p_in: form.turbine_in.p_in,
+          p_out: form.turbine_params.p_out,
           t_in: form.turbine_in.t_in
         }
       : {
@@ -138,23 +159,32 @@ const submit = async () => {
           flow_rate: form.turbine_in.flow_rate,
           flow_unit: form.turbine_in.flow_unit,
           p_in: form.turbine_in.p_in,
+          p_out: form.turbine_params.p_out,
           t_in: form.turbine_in.t_in
         }
-    
+
     const inputData = {
       turbine_in: turbineInData,
       turbine_params: { ...form.turbine_params }
     }
-    
+
     // 保存输入数据到 localStorage 供导出使用
     localStorage.setItem('lastInputData_mode3', JSON.stringify(inputData))
-    
+
     const res = await axios.post('/api/calculate/mode3', inputData)
+
+    // 检查后端返回的错误
+    if (res.data.error || !res.data.success) {
+      alert('⚠️ 计算失败：\n\n' + (res.data.error_message || '请检查输入参数是否合理'))
+      loading.value = false
+      return
+    }
+
     emit('calculate', res.data)
-  } catch (e) { 
-    alert('计算失败：' + e.message) 
-  } finally { 
-    loading.value = false 
+  } catch (e) {
+    alert('计算失败：' + e.message)
+  } finally {
+    loading.value = false
   }
 }
 </script>

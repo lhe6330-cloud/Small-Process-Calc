@@ -31,7 +31,37 @@ def absolute_to_gauge(p_abs: float) -> float:
 # H₂O 物性计算 (IF97)
 class WaterProperty:
     """水/水蒸气物性计算 (iapws IF97)"""
-    
+
+    @staticmethod
+    def get_saturation_temp(p_abs: float) -> float:
+        """获取饱和温度 (°C)"""
+        steam = IAPWS97(P=p_abs, x=0.5)
+        return steam.T - 273.15
+
+    @staticmethod
+    def get_phase(steam) -> str:
+        """
+        判定水的相态
+        @param steam: IAPWS97 对象
+        @return: 'liquid', 'gas', or 'two_phase'
+        """
+        if steam.x is not None and 0 < steam.x < 1:
+            return 'two_phase'
+        elif steam.x is not None and steam.x == 1:
+            return 'gas'
+        elif steam.x is not None and steam.x == 0:
+            # 需要区分饱和水和过冷水
+            T_sat = WaterProperty.get_saturation_temp(steam.P)
+            if steam.T - 273.15 < T_sat - 0.1:  # 过冷水
+                return 'liquid'
+            else:  # 饱和水
+                return 'liquid'
+        else:
+            # 单相区，用饱和温度判定
+            T_sat = WaterProperty.get_saturation_temp(steam.P)
+            t_actual = steam.T - 273.15
+            return 'liquid' if t_actual < T_sat else 'gas'
+
     @staticmethod
     def get_state(p_abs: float, t: float) -> Dict:
         """
@@ -42,13 +72,9 @@ class WaterProperty:
         """
         T = t + 273.15  # K
         steam = IAPWS97(P=p_abs, T=T)
-        
-        # 判断相态
-        if steam.x is None:
-            phase = 'liquid' if t < 100 else 'gas'
-        else:
-            phase = 'two_phase'
-        
+
+        phase = WaterProperty.get_phase(steam)
+
         return {
             'h': steam.h,  # kJ/kg
             's': steam.s,  # kJ/kg·K
@@ -67,12 +93,9 @@ class WaterProperty:
         @return: {h, s, rho, T, phase, x}
         """
         steam = IAPWS97(P=p_abs, s=s)
-        
-        if steam.x is None:
-            phase = 'liquid' if steam.T < 373.15 else 'gas'
-        else:
-            phase = 'two_phase'
-        
+
+        phase = WaterProperty.get_phase(steam)
+
         return {
             'h': steam.h,
             's': steam.s,
@@ -97,12 +120,9 @@ class WaterProperty:
         @return: {h, s, rho, T, phase, x}
         """
         steam = IAPWS97(P=p_abs, h=h)
-        
-        if steam.x is None:
-            phase = 'liquid' if steam.T < 373.15 else 'gas'
-        else:
-            phase = 'two_phase'
-        
+
+        phase = WaterProperty.get_phase(steam)
+
         return {
             'h': steam.h,
             's': steam.s,
@@ -262,89 +282,92 @@ class MixProperty:
                      composition_type: str = 'mole') -> Dict:
         """
         根据压力 + 熵计算混合介质状态
-        使用理想气体等熵膨胀公式估算温度，然后用 CoolProp 验证
+        使用二分法迭代计算（CoolProp SRK 混合物不支持直接的 S→T 计算）
         """
-        # 归一化组分
-        total = sum(composition.values())
-        normalized = {k: v / total for k, v in composition.items()}
-        
-        # 计算平均摩尔质量 (kg/mol)
-        molar_masses = {'N2': 0.028, 'O2': 0.032, 'H2': 0.002, 'CO2': 0.044, 'H2O': 0.018}
-        M = sum(frac * molar_masses.get(med, 0.028) for med, frac in normalized.items())
-        
-        # 计算平均比热比 gamma
-        gammas = {'N2': 1.4, 'O2': 1.4, 'H2': 1.4, 'CO2': 1.3, 'H2O': 1.33}
-        gamma = sum(frac * gammas.get(med, 1.4) for med, frac in normalized.items())
-        
-        R = 8.314 / M  # 气体常数 J/(kg·K)
-        cp = gamma * R / (gamma - 1)  # 定压比热 J/(kg·K)
-        
+        fluid_string = MixProperty.build_fluid_string(composition, composition_type)
         P_pa = p_abs * 1e6
         s_si = s * 1000  # kJ/kg·K → J/kg·K
-        
-        # 从熵值反推温度
-        # 对于理想气体：s = cp*ln(T) - R*ln(P) + const
-        # 整理得：T = exp((s - const + R*ln(P)) / cp)
-        # 使用近似：const ≈ cp*ln(298) - R*ln(101325)
-        import math
-        const = cp * math.log(298.15) - R * math.log(101325)
-        T = math.exp((s_si - const + R * math.log(P_pa)) / cp)
-        
-        # 确保温度为正
-        if T < 100:
-            T = 100
-        
-        # 用 CoolProp 验证
-        fluid_string = MixProperty.build_fluid_string(composition, composition_type)
+
+        # 使用二分法找等熵温度
+        # 对于膨胀过程，出口温度通常低于入口，搜索范围 100K-500K
+        T_low, T_high = 100.0, 500.0
+
+        # 二分法迭代
+        for _ in range(60):  # 足够达到机器精度
+            T_mid = (T_low + T_high) / 2
+            try:
+                s_mid = PropsSI('S', 'P', P_pa, 'T', T_mid, fluid_string)
+                if s_mid < s_si:
+                    T_low = T_mid
+                else:
+                    T_high = T_mid
+            except Exception:
+                # PropsSI 失败，扩大搜索范围
+                T_low = T_mid
+                continue
+
+        T = (T_low + T_high) / 2
+
         try:
             h = PropsSI('H', 'P', P_pa, 'T', T, fluid_string) / 1000
             rho = PropsSI('D', 'P', P_pa, 'T', T, fluid_string)
-            return {'h': h, 's': s, 'rho': rho, 'T': T}
-        except:
-            # 如果 CoolProp 失败，返回理想气体估计
+        except Exception:
+            # 极端情况下使用理想气体近似
+            total = sum(composition.values())
+            normalized = {k: v / total for k, v in composition.items()}
+            molar_masses = {'N2': 0.028, 'O2': 0.032, 'H2': 0.002, 'CO2': 0.044, 'H2O': 0.018}
+            M = sum(frac * molar_masses.get(med, 0.028) for med, frac in normalized.items())
+            R = 8.314 / M
             rho = P_pa / (R * T)
-            return {'h': cp * (T - 273.15) / 1000, 's': s, 'rho': rho, 'T': T}
+            h = 1.005 * (T - 273.15)  # 近似 cp
+
+        return {'h': h, 's': s, 'rho': rho, 'T': T}
     
     @staticmethod
     def get_state_ph(p_abs: float, h: float, composition: Dict[str, float],
                      composition_type: str = 'mole') -> Dict:
         """
         根据压力 + 焓计算混合介质状态
-        使用理想气体假设
+        使用二分法迭代计算（CoolProp SRK 混合物）
         """
-        # 归一化组分
-        total = sum(composition.values())
-        normalized = {k: v / total for k, v in composition.items()}
-        
-        # 计算平均摩尔质量 (kg/mol)
-        molar_masses = {'N2': 0.028, 'O2': 0.032, 'H2': 0.002, 'CO2': 0.044, 'H2O': 0.018}
-        M = sum(frac * molar_masses.get(med, 0.028) for med, frac in normalized.items())
-        
-        # 计算平均比热比 gamma
-        gammas = {'N2': 1.4, 'O2': 1.4, 'H2': 1.4, 'CO2': 1.3, 'H2O': 1.33}
-        gamma = sum(frac * gammas.get(med, 1.4) for med, frac in normalized.items())
-        
-        R = 8.314 / M  # 气体常数 J/(kg·K)
-        cp = gamma * R / (gamma - 1) / 1000  # 定压比热 kJ/(kg·K)
-        
-        # 理想气体：h = cp * T (近似，T 从 0°C 开始)
-        T = h / cp + 273.15  # K
-        
-        # 用 CoolProp 验证
         fluid_string = MixProperty.build_fluid_string(composition, composition_type)
-        P_abs_pa = p_abs * 1e6
+        P_pa = p_abs * 1e6
+        h_si = h * 1000  # kJ/kg → J/kg
+
+        # 使用二分法找温度
+        T_low, T_high = 100.0, 600.0
+
+        for _ in range(60):
+            T_mid = (T_low + T_high) / 2
+            try:
+                h_mid = PropsSI('H', 'P', P_pa, 'T', T_mid, fluid_string)
+                if h_mid < h_si:
+                    T_low = T_mid
+                else:
+                    T_high = T_mid
+            except Exception:
+                T_low = T_mid
+                continue
+
+        T = (T_low + T_high) / 2
+
         try:
-            s = PropsSI('S', 'P', P_abs_pa, 'T', T, fluid_string) / 1000
-            rho = PropsSI('D', 'P', P_abs_pa, 'T', T, fluid_string)
-            return {'h': h, 's': s, 'rho': rho, 'T': T}
-        except:
-            # 如果 CoolProp 失败，返回理想气体估计
-            rho = P_abs_pa / (R * T)
-            s = cp * 1000 * (T / 298.15) - R * (p_abs * 1e6 / 101325)  # 近似
-            return {'h': h, 's': s, 'rho': rho, 'T': T}
+            s = PropsSI('S', 'P', P_pa, 'T', T, fluid_string) / 1000
+            rho = PropsSI('D', 'P', P_pa, 'T', T, fluid_string)
+        except Exception:
+            # 极端情况下使用理想气体近似
+            total = sum(composition.values())
+            normalized = {k: v / total for k, v in composition.items()}
+            molar_masses = {'N2': 0.028, 'O2': 0.032, 'H2': 0.002, 'CO2': 0.044, 'H2O': 0.018}
+            M = sum(frac * molar_masses.get(med, 0.028) for med, frac in normalized.items())
+            R = 8.314 / M
+            rho = P_pa / (R * T)
+            s = 1.005 * 1000 * (T / 298.15)  # 近似
+
+        return {'h': h, 's': s, 'rho': rho, 'T': T}
 
 # 通用物性计算接口
-def get_fluid_property(p_gauge: float, t: float, medium_type: str, 
+def get_fluid_property(p_gauge: float, t: float, medium_type: str,
                        medium: str = None, mix_composition: Dict = None,
                        composition_type: str = 'mole') -> Dict:
     """
@@ -358,7 +381,7 @@ def get_fluid_property(p_gauge: float, t: float, medium_type: str,
     @return: {h, s, rho, T, phase?, x?}
     """
     p_abs = gauge_to_absolute(p_gauge)
-    
+
     if medium_type == 'single':
         if medium == 'H2O':
             return WaterProperty.get_state(p_abs, t)
@@ -368,6 +391,64 @@ def get_fluid_property(p_gauge: float, t: float, medium_type: str,
         return MixProperty.get_state(p_abs, t, mix_composition, composition_type)
     else:
         raise ValueError(f"Unknown medium_type: {medium_type}")
+
+
+# ============ 辅助函数：水蒸气物性（用于两相流计算） ============
+
+def get_water_saturation_pressure(t: float) -> float:
+    """
+    获取水的饱和蒸气压（MPa.A）
+    @param t: 温度 (°C)
+    @return: 饱和蒸气压 (MPa.A)
+    """
+    T = t + 273.15  # K
+    p_sat = PropsSI('P', 'T', T, 'Q', 1, 'H2O')  # Pa
+    return p_sat / 1e6  # MPa
+
+
+def get_water_latent_heat(t: float) -> float:
+    """
+    获取水的汽化潜热（kJ/kg）
+    @param t: 温度 (°C)
+    @return: 汽化潜热 (kJ/kg)
+    """
+    T = t + 273.15  # K
+    # 计算饱和液体和饱和蒸汽的焓差
+    h_l = PropsSI('H', 'T', T, 'Q', 0, 'H2O') / 1000  # kJ/kg
+    h_g = PropsSI('H', 'T', T, 'Q', 1, 'H2O') / 1000  # kJ/kg
+    return h_g - h_l
+
+
+def get_gas_cp(p_abs: float, t: float, composition: Dict[str, float],
+               composition_type: str = 'mole') -> float:
+    """
+    获取混合气体的定压比热容 Cp（kJ/kg·K）
+    @param p_abs: 绝压 (MPa)
+    @param t: 温度 (°C)
+    @param composition: 组分 {N2: 0.93, O2: 0.05, H2O: 0.02}
+    @param composition_type: 'mole' or 'mass'
+    @return: Cp (kJ/kg·K)
+    """
+    fluid_string = MixProperty.build_fluid_string(composition, composition_type)
+    P_pa = p_abs * 1e6
+    T = t + 273.15
+
+    try:
+        cp = PropsSI('Cpmass', 'P', P_pa, 'T', T, fluid_string) / 1000  # kJ/kg·K
+        return cp
+    except Exception:
+        # 失败时用理想气体近似
+        # 各组分摩尔定压热容（近似常数）
+        cp_molar = {'N2': 29.1, 'O2': 29.4, 'H2': 28.8, 'CO2': 37.1, 'H2O': 33.6, 'Air': 29.2}
+        total = sum(composition.values())
+        normalized = {k: v / total for k, v in composition.items()}
+
+        # 摩尔 Cp → 质量 Cp
+        molar_masses = {'N2': 0.028, 'O2': 0.032, 'H2': 0.002, 'CO2': 0.044, 'H2O': 0.018, 'Air': 0.029}
+        M_mix = sum(frac * molar_masses.get(med, 0.028) for med, frac in normalized.items())
+        cp_molar_mix = sum(frac * cp_molar.get(med, 29.1) for med, frac in normalized.items())
+
+        return cp_molar_mix / M_mix
 
 # 测试
 if __name__ == '__main__':

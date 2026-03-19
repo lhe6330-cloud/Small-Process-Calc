@@ -17,12 +17,15 @@
     </el-alert>
     
     <el-row :gutter="20" v-if="!result.error">
-      <el-col :span="8">
-        <el-statistic title="换热功率 (kW)" :value="result.heat_exchanger?.q_power?.toFixed(2) || 0" />
-      </el-col>
-      <el-col :span="8">
-        <el-statistic title="热边出口温度 (°C)" :value="result.heat_exchanger?.t_hot_out?.toFixed(1) || 0" />
-      </el-col>
+      <!-- 模式 1 和模式 2 才有换热器 -->
+      <template v-if="activeMode === 'mode1' || activeMode === 'mode2'">
+        <el-col :span="8">
+          <el-statistic title="换热功率 (kW)" :value="result.heat_exchanger?.q_power?.toFixed(2) || 0" />
+        </el-col>
+        <el-col :span="8">
+          <el-statistic title="热边出口温度 (°C)" :value="result.heat_exchanger?.t_hot_out?.toFixed(1) || 0" />
+        </el-col>
+      </template>
       <el-col :span="8">
         <el-statistic title="涡轮轴功率 (kW)" :value="result.turbine?.power_shaft?.toFixed(2) || 0" />
       </el-col>
@@ -36,10 +39,26 @@
         <el-statistic title="涡轮出口温度 (°C)" :value="result.turbine?.t_out?.toFixed(1) || 0" />
       </el-col>
       <el-col :span="8">
+        <el-statistic title="出口含液率 (%)" :value="result.turbine?.liquid_percent !== null ? result.turbine.liquid_percent.toFixed(1) : '--'" :value-style="result.turbine?.liquid_percent > 5 ? { color: '#ff9800' } : {}" />
+      </el-col>
+    </el-row>
+
+    <!-- 出口含液率警告 -->
+    <el-alert
+      v-if="result.turbine?.liquid_warning"
+      :title="result.turbine.liquid_warning"
+      type="warning"
+      :closable="false"
+      show-icon
+      style="margin-top: 15px"
+    />
+
+    <el-row :gutter="20" style="margin-top: 15px;">
+      <el-col :span="8">
         <el-statistic title="电机选型 (kW)" :value="result.selection?.motor || 0" />
       </el-col>
     </el-row>
-    
+
     <el-divider />
     
     <el-row :gutter="20">
@@ -579,21 +598,22 @@ const calculateTurbine = async () => {
 // 导出 PDF
 const exportPDF = async () => {
   exporting.value.pdf = true
-  
+
   try {
     const mode = props.activeMode
-    // 尝试多个可能的 key
-    const inputData = localStorage.getItem('lastInputData') || localStorage.getItem('lastInputData_' + mode)
+    // 根据模式读取正确的 localStorage key
+    const storageKey = 'lastInputData_' + mode
+    const inputData = localStorage.getItem(storageKey)
     const input = inputData ? JSON.parse(inputData) : null
-    
+
     if (!input) {
       ElMessage.error('未找到输入数据，请先进行计算')
       return
     }
-    
+
     // 构建完整的请求数据
     const requestData = { ...input }
-    
+
     // 添加 V2.0 功能数据
     requestData.separators = separators.value.filter(s => s.result).map(s => ({
       node_id: s.nodeId,
@@ -605,23 +625,23 @@ const exportPDF = async () => {
       },
       result: s.result,
     }))
-    
+
     requestData.turbine_1d = turbine1d.result ? {
       design_params: { ...turbine1d.design },
       result: turbine1d.result,
     } : null
-    
+
     const response = await fetch(`http://localhost:8000/api/export/pdf/${mode}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(requestData),
     })
-    
+
     if (!response.ok) {
       const error = await response.text()
       throw new Error(error)
     }
-    
+
     const blob = await response.blob()
     const url = window.URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -631,7 +651,7 @@ const exportPDF = async () => {
     a.click()
     document.body.removeChild(a)
     window.URL.revokeObjectURL(url)
-    
+
     ElMessage.success('✅ PDF 导出成功')
   } catch (e) {
     ElMessage.error('❌ PDF 导出失败：' + e.message)
@@ -643,21 +663,22 @@ const exportPDF = async () => {
 // 导出 Excel
 const exportExcel = async () => {
   exporting.value.excel = true
-  
+
   try {
     const mode = props.activeMode
-    // 尝试多个可能的 key
-    const inputData = localStorage.getItem('lastInputData') || localStorage.getItem('lastInputData_' + mode)
+    // 根据模式读取正确的 localStorage key
+    const storageKey = 'lastInputData_' + mode
+    const inputData = localStorage.getItem(storageKey)
     const input = inputData ? JSON.parse(inputData) : null
-    
+
     if (!input) {
       ElMessage.error('未找到输入数据，请先进行计算')
       return
     }
-    
+
     // 构建完整的请求数据
     const requestData = { ...input }
-    
+
     // 添加 V2.0 功能数据
     requestData.separators = separators.value.filter(s => s.result).map(s => ({
       node_id: s.nodeId,
@@ -669,23 +690,23 @@ const exportExcel = async () => {
       },
       result: s.result,
     }))
-    
+
     requestData.turbine_1d = turbine1d.result ? {
       design_params: { ...turbine1d.design },
       result: turbine1d.result,
     } : null
-    
+
     const response = await fetch(`http://localhost:8000/api/export/excel/${mode}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(requestData),
     })
-    
+
     if (!response.ok) {
       const error = await response.text()
       throw new Error(error)
     }
-    
+
     const blob = await response.blob()
     const url = window.URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -695,7 +716,7 @@ const exportExcel = async () => {
     a.click()
     document.body.removeChild(a)
     window.URL.revokeObjectURL(url)
-    
+
     ElMessage.success('✅ Excel 导出成功')
   } catch (e) {
     ElMessage.error('❌ Excel 导出失败：' + e.message)

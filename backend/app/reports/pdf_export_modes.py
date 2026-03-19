@@ -20,7 +20,7 @@ def register_chinese_font():
         r"C:\Windows\Fonts\simsun.ttc",
         r"C:\Windows\Fonts\simhei.ttf",
     ]
-    
+
     for font_path in font_paths:
         if os.path.exists(font_path):
             try:
@@ -28,16 +28,16 @@ def register_chinese_font():
                 return 'Chinese'
             except:
                 continue
-    
+
     return 'Helvetica'
 
 def export_mode2_pdf(data: dict, input_params: dict) -> bytes:
     """å¯¼å‡ºæ¨¡å¼ 2 PDF æŠ¥å‘Šï¼ˆå…ˆè†¨èƒ€åŽå›žçƒ­ï¼‰"""
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=2*cm, leftMargin=2*cm, topMargin=2*cm, bottomMargin=2*cm)
-    
+
     font_name = register_chinese_font()
-    
+
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle(
         'CustomTitle',
@@ -48,7 +48,7 @@ def export_mode2_pdf(data: dict, input_params: dict) -> bytes:
         fontName=font_name,
         spaceAfter=20
     )
-    
+
     heading_style = ParagraphStyle(
         'CustomHeading',
         parent=styles['Heading2'],
@@ -58,7 +58,7 @@ def export_mode2_pdf(data: dict, input_params: dict) -> bytes:
         spaceAfter=12,
         spaceBefore=12
     )
-    
+
     normal_style = ParagraphStyle(
         'CustomNormal',
         parent=styles['Normal'],
@@ -66,30 +66,30 @@ def export_mode2_pdf(data: dict, input_params: dict) -> bytes:
         textColor=colors.HexColor('#333333'),
         fontName=font_name,
     )
-    
+
     elements = []
-    
+
     # æ ‡é¢˜
     title = Paragraph("PDS CALC - è®¡ç®—æŠ¥å‘Š", title_style)
     elements.append(title)
-    
+
     subtitle = Paragraph("æ¨¡å¼ 2: å…ˆè†¨èƒ€åŽå›žçƒ­", ParagraphStyle('Subtitle', parent=normal_style, alignment=TA_CENTER, fontSize=12))
     elements.append(subtitle)
     elements.append(Spacer(1, 0.3*cm))
-    
+
     # æ—¶é—´
     time_text = f"è®¡ç®—æ—¶é—´ï¼š{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
     elements.append(Paragraph(time_text, ParagraphStyle('Time', parent=normal_style, alignment=TA_CENTER, textColor=colors.gray)))
     elements.append(Spacer(1, 0.5*cm))
-    
+
     # è¾“å…¥å‚æ•°
     elements.append(Paragraph("è¾“å…¥å‚æ•°", heading_style))
-    
+
     turbine_in = input_params.get('turbine_in', {})
     turbine_params = input_params.get('turbine_params', {})
     hx_cold_out = input_params.get('hx_cold_out', {})
     hx_hot = input_params.get('hx_hot', {})
-    
+
     input_data = [
         ['å‚æ•°', 'æ¶¡è½®å…¥å£', 'æ¶¡è½®å‚æ•°', 'æ¢çƒ­å™¨å†·è¾¹å‡ºå£', 'æ¢çƒ­å™¨çƒ­è¾¹'],
         ['ä»‹è´¨', turbine_in.get('medium', '-'), '-', '-', hx_hot.get('medium', '-')],
@@ -100,7 +100,7 @@ def export_mode2_pdf(data: dict, input_params: dict) -> bytes:
         ['å‡ºå£æ¸©åº¦ (Â°C)', '-', '-', str(hx_cold_out.get('t_out', '-')), '-'],
         ['ç»çƒ­æ•ˆçŽ‡ (%)', '-', str(turbine_params.get('adiabatic_efficiency', '-')), '-', '-'],
     ]
-    
+
     input_table = Table(input_data, colWidths=[2.5*cm, 3.5*cm, 3*cm, 3.5*cm, 3.5*cm])
     input_table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1E293B')),
@@ -118,10 +118,10 @@ def export_mode2_pdf(data: dict, input_params: dict) -> bytes:
     ]))
     elements.append(input_table)
     elements.append(Spacer(1, 0.5*cm))
-    
+
     # è®¡ç®—ç»“æžœ
     elements.append(Paragraph("è®¡ç®—ç»“æžœ", heading_style))
-    
+
     result_data = [
         ['é¡¹ç›®', 'æ•°å€¼', 'å•ä½'],
         ['æ¶¡è½®è½´åŠŸçŽ‡', f"{data.get('turbine', {}).get('power_shaft', 0):.2f}", 'kW'],
@@ -134,7 +134,7 @@ def export_mode2_pdf(data: dict, input_params: dict) -> bytes:
         ['å‡ºå£ç®¡é“', f"DN{data.get('selection', {}).get('pipe_outlet', {}).get('recommended_dn', 0)}", '-'],
         ['é˜€é—¨', f"DN{data.get('selection', {}).get('valve', {}).get('valve_dn', 0)}", '-'],
     ]
-    
+
     result_table = Table(result_data, colWidths=[5*cm, 4*cm, 2*cm])
     result_table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1E293B')),
@@ -151,7 +151,7 @@ def export_mode2_pdf(data: dict, input_params: dict) -> bytes:
         ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.lightgrey]),
     ]))
     elements.append(result_table)
-    
+
     # é¡µè„š
     elements.append(Spacer(1, 1*cm))
     footer = Paragraph(
@@ -161,7 +161,7 @@ def export_mode2_pdf(data: dict, input_params: dict) -> bytes:
         normal_style
     )
     elements.append(footer)
-    
+
     doc.build(elements)
     buffer.seek(0)
     return buffer.read()
@@ -170,9 +170,9 @@ def export_mode3_pdf(data: dict, input_params: dict) -> bytes:
     """å¯¼å‡ºæ¨¡å¼ 3 PDF æŠ¥å‘Šï¼ˆç›´æŽ¥è†¨èƒ€ï¼‰"""
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=2*cm, leftMargin=2*cm, topMargin=2*cm, bottomMargin=2*cm)
-    
+
     font_name = register_chinese_font()
-    
+
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle(
         'CustomTitle',
@@ -183,7 +183,7 @@ def export_mode3_pdf(data: dict, input_params: dict) -> bytes:
         fontName=font_name,
         spaceAfter=20
     )
-    
+
     heading_style = ParagraphStyle(
         'CustomHeading',
         parent=styles['Heading2'],
@@ -193,7 +193,7 @@ def export_mode3_pdf(data: dict, input_params: dict) -> bytes:
         spaceAfter=12,
         spaceBefore=12
     )
-    
+
     normal_style = ParagraphStyle(
         'CustomNormal',
         parent=styles['Normal'],
@@ -201,28 +201,28 @@ def export_mode3_pdf(data: dict, input_params: dict) -> bytes:
         textColor=colors.HexColor('#333333'),
         fontName=font_name,
     )
-    
+
     elements = []
-    
+
     # æ ‡é¢˜
     title = Paragraph("PDS CALC - è®¡ç®—æŠ¥å‘Š", title_style)
     elements.append(title)
-    
+
     subtitle = Paragraph("æ¨¡å¼ 3: ç›´æŽ¥è†¨èƒ€", ParagraphStyle('Subtitle', parent=normal_style, alignment=TA_CENTER, fontSize=12))
     elements.append(subtitle)
     elements.append(Spacer(1, 0.3*cm))
-    
+
     # æ—¶é—´
     time_text = f"è®¡ç®—æ—¶é—´ï¼š{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
     elements.append(Paragraph(time_text, ParagraphStyle('Time', parent=normal_style, alignment=TA_CENTER, textColor=colors.gray)))
     elements.append(Spacer(1, 0.5*cm))
-    
+
     # è¾“å…¥å‚æ•°
     elements.append(Paragraph("è¾“å…¥å‚æ•°", heading_style))
-    
+
     turbine_in = input_params.get('turbine_in', {})
     turbine_params = input_params.get('turbine_params', {})
-    
+
     input_data = [
         ['å‚æ•°', 'æ•°å€¼'],
         ['ä»‹è´¨', turbine_in.get('medium', '-')],
@@ -232,7 +232,7 @@ def export_mode3_pdf(data: dict, input_params: dict) -> bytes:
         ['å‡ºå£åŽ‹åŠ› (MPa.G)', str(turbine_params.get('p_out', '-'))],
         ['ç»çƒ­æ•ˆçŽ‡ (%)', str(turbine_params.get('adiabatic_efficiency', '-'))],
     ]
-    
+
     input_table = Table(input_data, colWidths=[6*cm, 6*cm])
     input_table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1E293B')),
@@ -250,10 +250,10 @@ def export_mode3_pdf(data: dict, input_params: dict) -> bytes:
     ]))
     elements.append(input_table)
     elements.append(Spacer(1, 0.5*cm))
-    
+
     # è®¡ç®—ç»“æžœ
     elements.append(Paragraph("è®¡ç®—ç»“æžœ", heading_style))
-    
+
     result_data = [
         ['é¡¹ç›®', 'æ•°å€¼', 'å•ä½'],
         ['æ¶¡è½®è½´åŠŸçŽ‡', f"{data.get('turbine', {}).get('power_shaft', 0):.2f}", 'kW'],
@@ -264,7 +264,7 @@ def export_mode3_pdf(data: dict, input_params: dict) -> bytes:
         ['å‡ºå£ç®¡é“', f"DN{data.get('selection', {}).get('pipe_outlet', {}).get('recommended_dn', 0)}", '-'],
         ['é˜€é—¨', f"DN{data.get('selection', {}).get('valve', {}).get('valve_dn', 0)}", '-'],
     ]
-    
+
     result_table = Table(result_data, colWidths=[5*cm, 4*cm, 2*cm])
     result_table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1E293B')),
@@ -281,7 +281,7 @@ def export_mode3_pdf(data: dict, input_params: dict) -> bytes:
         ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.lightgrey]),
     ]))
     elements.append(result_table)
-    
+
     # é¡µè„š
     elements.append(Spacer(1, 1*cm))
     footer = Paragraph(
@@ -291,15 +291,15 @@ def export_mode3_pdf(data: dict, input_params: dict) -> bytes:
         normal_style
     )
     elements.append(footer)
-    
+
     doc.build(elements)
     buffer.seek(0)
     return buffer.read()
 
-# ============ V2.0 ÐÂÔöµ¼³ö ============
+# ============ V2.0 æ–°å¢žåŠŸèƒ½ ============
 
 def export_mode4_pdf(data: dict, input_params: dict) -> bytes:
-    """µ¼³öÄ£Ê½ 4 PDF ±¨¸æ£¨·ÖÀëÆ÷Éè¼Æ£©"""
+    """å¯¼å‡ºæ¨¡å¼ 4 PDF æŠ¥å‘Šï¼ˆåˆ†ç¦»å™¨è®¾è®¡ï¼‰"""
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=2*cm, leftMargin=2*cm, topMargin=2*cm, bottomMargin=2*cm)
     font_name = register_chinese_font()
@@ -308,27 +308,27 @@ def export_mode4_pdf(data: dict, input_params: dict) -> bytes:
     heading_style = ParagraphStyle('CustomHeading', parent=styles['Heading2'], fontSize=14, textColor=colors.HexColor('#00D4FF'), fontName=font_name, spaceAfter=12, spaceBefore=12)
     normal_style = ParagraphStyle('CustomNormal', parent=styles['Normal'], fontSize=10, textColor=colors.HexColor('#333333'), fontName=font_name)
     elements = []
-    elements.append(Paragraph("PDS CALC V2.0 - ·ÖÀëÆ÷Éè¼Æ±¨¸æ", title_style))
-    elements.append(Paragraph("Ä£Ê½ 4: Á÷³Ì½Úµã·ÖÀëÆ÷", ParagraphStyle('Subtitle', parent=normal_style, alignment=TA_CENTER, fontSize=12)))
+    elements.append(Paragraph("PDS CALC V2.0 - åˆ†ç¦»å™¨è®¾è®¡æŠ¥å‘Š", title_style))
+    elements.append(Paragraph("æ¨¡å¼ 4: æµç¨‹èŠ‚ç‚¹åˆ†ç¦»", ParagraphStyle('Subtitle', parent=normal_style, alignment=TA_CENTER, fontSize=12)))
     elements.append(Spacer(1, 0.3*cm))
-    elements.append(Paragraph(f"¼ÆËãÊ±¼ä£º{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", ParagraphStyle('Time', parent=normal_style, alignment=TA_CENTER, textColor=colors.gray)))
+    elements.append(Paragraph(f"è®¡ç®—æ—¶é—´ï¼š{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", ParagraphStyle('Time', parent=normal_style, alignment=TA_CENTER, textColor=colors.gray)))
     elements.append(Spacer(1, 0.5*cm))
     node_params = input_params.get('node_params', {})
-    input_data = [['²ÎÊý', 'ÊýÖµ'], ['Ìí¼ÓÎ»ÖÃ', input_params.get('node_id', '-')], ['Ñ¹Á¦ (MPa.G)', str(node_params.get('p', '-'))], ['ÎÂ¶È (¡ãC)', str(node_params.get('t', '-'))], ['Á÷Á¿', f"{node_params.get('flow_rate', 0)} {node_params.get('flow_unit', '')}"], ['ÆøÌåÃÜ¶È (kg/m3)', str(node_params.get('rho', '-'))]]
+    input_data = [['å‚æ•°', 'æ•°å€¼'], ['æ·»åŠ ä½ç½®', input_params.get('node_id', '-')], ['åŽ‹åŠ› (MPa.G)', str(node_params.get('p', '-'))], ['æ¸©åº¦ (Â°C)', str(node_params.get('t', '-'))], ['æµé‡', f"{node_params.get('flow_rate', 0)} {node_params.get('flow_unit', '')}"], ['æ°”ä½“å¯†åº¦ (kg/m3)', str(node_params.get('rho', '-'))]]
     input_table = Table(input_data, colWidths=[6*cm, 6*cm])
     input_table.setStyle(TableStyle([('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1E293B')), ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke), ('ALIGN', (0, 0), (-1, -1), 'CENTER'), ('FONTNAME', (0, 0), (-1, 0), font_name), ('GRID', (0, 0), (-1, -1), 1, colors.black)]))
     elements.append(input_table)
     elements.append(Spacer(1, 0.5*cm))
     vle_result = data.get('vle', {})
     if vle_result and not vle_result.get('skip', False):
-        elements.append(Paragraph("ÆøÒºÆ½ºâ¼ÆËã", heading_style))
-        vle_data = [['²ÎÊý', 'ÊýÖµ'], ['ÆøÏà·ÖÂÊ', f"{vle_result.get('vapor_frac', 0) * 100:.1f} %"], ['ÒºÏà·ÖÂÊ', f"{vle_result.get('liquid_frac', 0) * 100:.1f} %"], ['ÀäÄýÒºÁ÷Á¿ (T/h)', f"{vle_result.get('liquid_flow', 0):.2f}"]]
+        elements.append(Paragraph("æ°”æ¶²å¹³è¡¡ç»“æžœ", heading_style))
+        vle_data = [['å‚æ•°', 'æ•°å€¼'], ['æ°”ç›¸åˆ†çŽ‡', f"{vle_result.get('vapor_frac', 0) * 100:.1f} %"], ['æ¶²ç›¸åˆ†çŽ‡', f"{vle_result.get('liquid_frac', 0) * 100:.1f} %"], ['æ¶²ç›¸æµé‡ (T/h)', f"{vle_result.get('liquid_flow', 0):.2f}"]]
         vle_table = Table(vle_data, colWidths=[6*cm, 6*cm])
         vle_table.setStyle(TableStyle([('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1E293B')), ('GRID', (0, 0), (-1, -1), 1, colors.black)]))
         elements.append(vle_table)
         elements.append(Spacer(1, 0.5*cm))
-    elements.append(Paragraph("·ÖÀëÆ÷³ß´ç", heading_style))
-    result_data = [['²ÎÊý', 'ÊýÖµ'], ['·ÖÀëÆ÷Ö±¾¶ (mm)', str(data.get('diameter', 0))], ['·ÖÀëÆ÷¸ß¶È/³¤¶È (mm)', str(data.get('length', 0))], ['ÒºÌåÍ£ÁôÊ±¼ä (s)', f"{data.get('residence_time', 0):.1f}"], ['Ð£ºË½á¹û', 'OK' if data.get('check_passed') else 'WARN']]
+    elements.append(Paragraph("åˆ†ç¦»å™¨å°ºå¯¸", heading_style))
+    result_data = [['å‚æ•°', 'æ•°å€¼'], ['åˆ†ç¦»å™¨ç›´å¾„ (mm)', str(data.get('diameter', 0))], ['åˆ†ç¦»å™¨é•¿åº¦/é«˜åº¦ (mm)', str(data.get('length', 0))], ['æ¶²ä½“åœç•™æ—¶é—´ (s)', f"{data.get('residence_time', 0):.1f}"], ['æ ¡æ ¸ç»“æžœ', 'OK' if data.get('check_passed') else 'WARN']]
     result_table = Table(result_data, colWidths=[6*cm, 6*cm])
     result_table.setStyle(TableStyle([('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#00D4FF')), ('TEXTCOLOR', (0, 0), (-1, 0), colors.white), ('GRID', (0, 0), (-1, -1), 1, colors.black)]))
     elements.append(result_table)
@@ -341,7 +341,7 @@ def export_mode4_pdf(data: dict, input_params: dict) -> bytes:
 
 
 def export_mode5_pdf(data: dict, input_params: dict) -> bytes:
-    """µ¼³öÄ£Ê½ 5 PDF ±¨¸æ£¨ÎÐÂÖÒ»Î¬Éè¼Æ£©"""
+    """å¯¼å‡ºæ¨¡å¼ 5 PDF æŠ¥å‘Šï¼ˆæ¶¡è½®ä¸€ç»´è®¾è®¡ï¼‰"""
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=2*cm, leftMargin=2*cm, topMargin=2*cm, bottomMargin=2*cm)
     font_name = register_chinese_font()
@@ -350,41 +350,41 @@ def export_mode5_pdf(data: dict, input_params: dict) -> bytes:
     heading_style = ParagraphStyle('CustomHeading', parent=styles['Heading2'], fontSize=14, textColor=colors.HexColor('#00D4FF'), fontName=font_name, spaceAfter=12, spaceBefore=12)
     normal_style = ParagraphStyle('CustomNormal', parent=styles['Normal'], fontSize=10, textColor=colors.HexColor('#333333'), fontName=font_name)
     elements = []
-    elements.append(Paragraph("PDS CALC V2.0 - ÎÐÂÖÒ»Î¬Éè¼Æ±¨¸æ", title_style))
-    elements.append(Paragraph("Ä£Ê½ 5: ¾¶Á÷Ê½ÎÐÂÖÍ¨Á÷Éè¼Æ", ParagraphStyle('Subtitle', parent=normal_style, alignment=TA_CENTER, fontSize=12)))
+    elements.append(Paragraph("PDS CALC V2.0 - æ¶¡è½®ä¸€ç»´è®¾è®¡æŠ¥å‘Š", title_style))
+    elements.append(Paragraph("æ¨¡å¼ 5: å†²åŠ¨å¼æ¶¡è½®é€šæµè®¾è®¡", ParagraphStyle('Subtitle', parent=normal_style, alignment=TA_CENTER, fontSize=12)))
     elements.append(Spacer(1, 0.3*cm))
-    elements.append(Paragraph(f"¼ÆËãÊ±¼ä£º{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", ParagraphStyle('Time', parent=normal_style, alignment=TA_CENTER, textColor=colors.gray)))
+    elements.append(Paragraph(f"è®¡ç®—æ—¶é—´ï¼š{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", ParagraphStyle('Time', parent=normal_style, alignment=TA_CENTER, textColor=colors.gray)))
     elements.append(Spacer(1, 0.5*cm))
-    elements.append(Paragraph("Éè¼Æ²ÎÊý", heading_style))
-    design_data = [['²ÎÊý', 'ÊýÖµ'], ['×ªËÙ n (rpm)', str(input_params.get('speed_rpm', 3000))], ['ËÙ±È u/C?', str(input_params.get('speed_ratio', 0.65))], ['·´¶¯¶È ¦¸ (%)', str(input_params.get('reaction', 50))]]
+    elements.append(Paragraph("è®¾è®¡å‚æ•°", heading_style))
+    design_data = [['å‚æ•°', 'æ•°å€¼'], ['è½¬é€Ÿ n (rpm)', str(input_params.get('speed_rpm', 3000))], ['é€Ÿæ¯” u/Câ‚€', str(input_params.get('speed_ratio', 0.65))], ['ååŠ¨åº¦ Î© (%)', str(input_params.get('reaction', 50))]]
     design_table = Table(design_data, colWidths=[6*cm, 6*cm])
     design_table.setStyle(TableStyle([('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1E293B')), ('GRID', (0, 0), (-1, -1), 1, colors.black)]))
     elements.append(design_table)
     elements.append(Spacer(1, 0.5*cm))
-    elements.append(Paragraph("»ù±¾³ß´ç", heading_style))
+    elements.append(Paragraph("é€šæµå°ºå¯¸", heading_style))
     dims = data.get('dimensions', {})
-    dim_data = [['²ÎÊý', '·ûºÅ', 'ÊýÖµ (mm)'], ['Ò¶ÂÖÍâ¾¶', 'D?', str(dims.get('D1', 0))], ['Ò¶ÂÖÄÚ¾¶', 'D?', str(dims.get('D2', 0))], ['½ø¿ÚÒ¶Æ¬¸ß¶È', 'b?', str(dims.get('b1', 0))], ['³ö¿ÚÒ¶Æ¬¸ß¶È', 'b?', str(dims.get('b2', 0))]]
+    dim_data = [['ä½ç½®', 'ç¬¦å·', 'æ•°å€¼ (mm)'], ['å¶é¡¶å¤–å¾„', 'Dâ‚', str(dims.get('D1', 0))], ['å¶æ ¹å†…å¾„', 'Dâ‚‚', str(dims.get('D2', 0))], ['è¿›å£å¶ç‰‡é«˜åº¦', 'bâ‚', str(dims.get('b1', 0))], ['å‡ºå£å¶ç‰‡é«˜åº¦', 'bâ‚‚', str(dims.get('b2', 0))]]
     dim_table = Table(dim_data, colWidths=[4*cm, 2*cm, 4*cm])
     dim_table.setStyle(TableStyle([('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#00D4FF')), ('TEXTCOLOR', (0, 0), (-1, 0), colors.white), ('GRID', (0, 0), (-1, -1), 1, colors.black)]))
     elements.append(dim_table)
     elements.append(Spacer(1, 0.5*cm))
-    elements.append(Paragraph("ËÙ¶ÈÈý½ÇÐÎ - ½ø¿Ú", heading_style))
+    elements.append(Paragraph("é€Ÿåº¦ä¸‰è§’å½¢ - è¿›å£", heading_style))
     vel_in = data.get('velocity_triangle_in', {})
-    vel_in_data = [['²ÎÊý', 'ÊýÖµ'], ['¾ø¶ÔËÙ¶È C?', f"{vel_in.get('C1', 0)} m/s"], ['Ïà¶ÔËÙ¶È W?', f"{vel_in.get('W1', 0)} m/s"], ['Ô²ÖÜËÙ¶È U?', f"{vel_in.get('U1', 0)} m/s"], ['¾ø¶ÔÆøÁ÷½Ç ¦Á?', f"{vel_in.get('alpha1', 0)} ¡ã"], ['Ïà¶ÔÆøÁ÷½Ç ¦Â?', f"{vel_in.get('beta1', 0)} ¡ã"]]
+    vel_in_data = [['å‚æ•°', 'æ•°å€¼'], ['ç»å¯¹é€Ÿåº¦ Câ‚', f"{vel_in.get('C1', 0)} m/s"], ['ç›¸å¯¹é€Ÿåº¦ Wâ‚', f"{vel_in.get('W1', 0)} m/s"], ['åœ†å‘¨é€Ÿåº¦ Uâ‚', f"{vel_in.get('U1', 0)} m/s"], ['ç»å¯¹è¿›æ°”è§’ Î±â‚', f"{vel_in.get('alpha1', 0)} Â°"], ['ç›¸å¯¹è¿›æ°”è§’ Î²â‚', f"{vel_in.get('beta1', 0)} Â°"]]
     vel_in_table = Table(vel_in_data, colWidths=[6*cm, 6*cm])
     vel_in_table.setStyle(TableStyle([('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1E293B')), ('GRID', (0, 0), (-1, -1), 1, colors.black)]))
     elements.append(vel_in_table)
     elements.append(Spacer(1, 0.5*cm))
-    elements.append(Paragraph("ËÙ¶ÈÈý½ÇÐÎ - ³ö¿Ú", heading_style))
+    elements.append(Paragraph("é€Ÿåº¦ä¸‰è§’å½¢ - å‡ºå£", heading_style))
     vel_out = data.get('velocity_triangle_out', {})
-    vel_out_data = [['²ÎÊý', 'ÊýÖµ'], ['¾ø¶ÔËÙ¶È C?', f"{vel_out.get('C2', 0)} m/s"], ['Ïà¶ÔËÙ¶È W?', f"{vel_out.get('W2', 0)} m/s"], ['Ô²ÖÜËÙ¶È U?', f"{vel_out.get('U2', 0)} m/s"], ['¾ø¶ÔÆøÁ÷½Ç ¦Á?', f"{vel_out.get('alpha2', 0)} ¡ã"], ['Ïà¶ÔÆøÁ÷½Ç ¦Â?', f"{vel_out.get('beta2', 0)} ¡ã"]]
+    vel_out_data = [['å‚æ•°', 'æ•°å€¼'], ['ç»å¯¹é€Ÿåº¦ Câ‚‚', f"{vel_out.get('C2', 0)} m/s"], ['ç›¸å¯¹é€Ÿåº¦ Wâ‚‚', f"{vel_out.get('W2', 0)} m/s"], ['åœ†å‘¨é€Ÿåº¦ Uâ‚‚', f"{vel_out.get('U2', 0)} m/s"], ['ç»å¯¹å‡ºæ°”è§’ Î±â‚‚', f"{vel_out.get('alpha2', 0)} Â°"], ['ç›¸å¯¹å‡ºæ°”è§’ Î²â‚‚', f"{vel_out.get('beta2', 0)} Â°"]]
     vel_out_table = Table(vel_out_data, colWidths=[6*cm, 6*cm])
     vel_out_table.setStyle(TableStyle([('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1E293B')), ('GRID', (0, 0), (-1, -1), 1, colors.black)]))
     elements.append(vel_out_table)
     elements.append(Spacer(1, 0.5*cm))
-    elements.append(Paragraph("ÐÔÄÜÑéÖ¤", heading_style))
+    elements.append(Paragraph("æ€§èƒ½éªŒè¯", heading_style))
     perf = data.get('performance', {})
-    perf_data = [['²ÎÊý', 'ÊýÖµ'], ['¼¶Ð§ÂÊ ¦Ç', f"{data.get('thermo_params', {}).get('eta', 0)} %"], ['¼ÆËã¹¦ÂÊ', f"{perf.get('P_calc', 0)} kW"], ['ÊäÈë¹¦ÂÊ', f"{perf.get('P_input', 0)} kW"], ['¹¦ÂÊÑéÖ¤', 'OK' if perf.get('match') else 'WARN']]
+    perf_data = [['å‚æ•°', 'æ•°å€¼'], ['çƒ­æ•ˆæ•ˆçŽ‡ Î·', f"{data.get('thermo_params', {}).get('eta', 0)} %"], ['è®¡ç®—åŠŸçŽ‡', f"{perf.get('P_calc', 0)} kW"], ['è¾“å…¥åŠŸçŽ‡', f"{perf.get('P_input', 0)} kW"], ['åŒ¹é…éªŒè¯', 'OK' if perf.get('match') else 'WARN']]
     perf_table = Table(perf_data, colWidths=[6*cm, 6*cm])
     perf_table.setStyle(TableStyle([('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#00D4FF')), ('TEXTCOLOR', (0, 0), (-1, 0), colors.white), ('GRID', (0, 0), (-1, -1), 1, colors.black)]))
     elements.append(perf_table)
@@ -394,4 +394,3 @@ def export_mode5_pdf(data: dict, input_params: dict) -> bytes:
     doc.build(elements)
     buffer.seek(0)
     return buffer.read()
-

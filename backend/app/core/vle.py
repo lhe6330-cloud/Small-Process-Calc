@@ -18,6 +18,55 @@ from CoolProp.CoolProp import PropsSI
 from typing import Dict, Optional
 
 
+def calc_inlet_liquid_frac(p_gauge: float, t: float, composition: Dict[str, float]) -> float:
+    """
+    计算进口含液量（基于水的分压判断）
+
+    @param p_gauge: 压力 (MPa.G)
+    @param t: 温度 (°C)
+    @param composition: 介质组成 {H2O: 0.02, N2: 0.93, O2: 0.05}（摩尔分数）
+    @return: 液相分率（质量分数，0-1），无冷凝时返回 0
+    """
+    from iapws import IAPWS97
+
+    # 压力转换：表压 → 绝压 (Pa)
+    p_abs = (p_gauge + 0.101325) * 1e6  # Pa
+
+    # 温度转换：°C → K
+    T = t + 273.15  # K
+
+    # 水的摩尔分率
+    y_h2o = composition.get('H2O', 0)
+    if y_h2o < 0.001:
+        return 0.0  # 不含水或微量
+
+    # 1. 计算气相中水的分压（假设全部水都在气相）
+    p_h2o_partial = y_h2o * p_abs  # Pa
+
+    # 2. 计算当前温度下水的饱和蒸气压（使用 iapws，避免 CoolProp H2O 库问题）
+    try:
+        steam = IAPWS97(T=T, x=1)
+        p_h2o_sat = steam.P * 1e6  # MPa → Pa
+    except Exception:
+        # 失败时用 Antoine 公式近似
+        A, B, C = 5.11564, 1687.537, 230.170
+        p_bar = 10 ** (A - B / (T - C))
+        p_h2o_sat = p_bar * 1e5  # bar → Pa
+
+    # 3. 判断冷凝
+    if p_h2o_partial <= p_h2o_sat:
+        # 无冷凝
+        return 0.0
+    else:
+        # 有水冷凝
+        # 气相中最大水含量（摩尔分数）= p_sat / p_total
+        y_h2o_max = p_h2o_sat / p_abs
+
+        # 冷凝的水量 = 原始水量 - 气相最大水量
+        liquid_frac = y_h2o - y_h2o_max
+        return max(0.0, liquid_frac)
+
+
 def has_water(composition: Dict[str, float]) -> bool:
     """
     判断介质组成是否含有 H₂O
@@ -93,31 +142,39 @@ def vle_calc(p: float, t: float, composition: Dict[str, float],
     try:
         # 构建 CoolProp 混合物流体字符串 (使用 SRK 模型)
         fluid_string = _build_fluid_string(composition)
-        
-        # 简化处理：通过饱和温度判断相态
-        # 对于含 H2O 的混合物，使用 H2O 的饱和温度作为参考
+
+        # === 改进的冷凝判断逻辑（基于水的分压，不是纯水饱和温度）===
+        # 适用于含水量 0-5% 的低浓度湿气体
         h2o_frac = composition.get('H2O', 0)
-        
+
         try:
-            # 获取 H₂O 在当前压力下的饱和温度
-            T_sat = PropsSI('T', 'P', p_abs, 'Q', 0.5, 'H2O')
-            
-            # 判断相态
-            if T > T_sat + 5:  # 过热蒸汽 (留 5K 余量)
+            # 1. 计算气相中水的分压（假设全部水都在气相）
+            # 对于低含水量混合物，水的摩尔分率 ≈ h2o_frac
+            p_h2o_partial = h2o_frac * p_abs  # Pa
+
+            # 2. 计算当前温度下水的饱和蒸气压
+            p_h2o_sat = PropsSI('P', 'T', T, 'Q', 1, 'H2O')  # Pa
+
+            # 3. 判断冷凝
+            if p_h2o_partial <= p_h2o_sat:
+                # 无冷凝，全部是气相
                 vapor_frac = 1.0
-            elif T < T_sat - 5:  # 过冷液体
-                vapor_frac = 0.0
-            else:  # 两相区
-                # 简化：根据温度与饱和温度的差值估算干度
-                # 在实际工程中，需要更复杂的闪蒸计算
-                delta_T = T - T_sat
-                vapor_frac = 0.5 + (delta_T / 10)  # 线性近似
-                vapor_frac = max(0.0, min(1.0, vapor_frac))
+                liquid_frac = 0.0
+            else:
+                # 有水冷凝
+                # 气相中最大水含量（摩尔分数）= p_sat / p_total
+                y_h2o_max = p_h2o_sat / p_abs
+
+                # 冷凝的水量 = 原始水量 - 气相最大水量
+                # liquid_frac 是液相摩尔分率（近似为质量分率，对低含水量）
+                liquid_frac = h2o_frac - y_h2o_max
+                liquid_frac = max(0.0, min(1.0, liquid_frac))
+                vapor_frac = 1.0 - liquid_frac
+
         except Exception as e:
-            # 如果 H2O 饱和温度计算失败，假设为气相
+            # 如果计算失败，假设为气相
             vapor_frac = 1.0
-        
-        liquid_frac = 1.0 - vapor_frac
+            liquid_frac = 0.0
         
         # 获取物性参数
         try:
