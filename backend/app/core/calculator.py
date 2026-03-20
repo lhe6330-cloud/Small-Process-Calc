@@ -51,10 +51,18 @@ def calculate_mode2(turbine_in: Dict, turbine_params: Dict, hx_cold_params: Dict
     state_in = get_fluid_property(turbine_in['p_in'], turbine_in['t_in'],
         turbine_in['medium_type'], turbine_in['medium'],
         turbine_in.get('mix_composition'), turbine_in.get('composition_type', 'mole'))
+
+    # 阀门参数（从 turbine_in 中读取，新增 valve_dp 和 valve_type）
+    valve_dp = turbine_in.get('valve_dp', 30)  # kPa
+    valve_type = turbine_in.get('valve_type', 'butterfly')
+
     valve = select_valve(turbine_in['flow_rate'], turbine_in['flow_unit'],
         state_in['rho'], pipe_in['recommended_dn'],
-        turbine_in['medium_type'], turbine_in['medium'])
-    
+        turbine_in['medium_type'], turbine_in['medium'],
+        delta_p_kpa=valve_dp, valve_type=valve_type,
+        t=turbine_in['t_in'], p_in_abs=turbine_in['p_in'] + 0.101325,
+        p_out_abs=turbine_params['p_out'] + 0.101325)
+
     return {
         "success": True,
         "turbine": {
@@ -113,10 +121,18 @@ def calculate_mode3(turbine_in: Dict, turbine_params: Dict) -> Dict:
     state_in = get_fluid_property(turbine_in['p_in'], turbine_in['t_in'],
         turbine_in['medium_type'], turbine_in['medium'],
         turbine_in.get('mix_composition'), turbine_in.get('composition_type', 'mole'))
+
+    # 阀门参数（从 turbine_in 中读取，新增 valve_dp 和 valve_type）
+    valve_dp = turbine_in.get('valve_dp', 30)  # kPa
+    valve_type = turbine_in.get('valve_type', 'butterfly')
+
     valve = select_valve(turbine_in['flow_rate'], turbine_in['flow_unit'],
         state_in['rho'], pipe_in['recommended_dn'],
-        turbine_in['medium_type'], turbine_in['medium'])
-    
+        turbine_in['medium_type'], turbine_in['medium'],
+        delta_p_kpa=valve_dp, valve_type=valve_type,
+        t=turbine_in['t_in'], p_in_abs=turbine_in['p_in'] + 0.101325,
+        p_out_abs=turbine_params['p_out'] + 0.101325)
+
     return {
         "success": True,
         "turbine": {

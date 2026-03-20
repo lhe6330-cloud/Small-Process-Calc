@@ -77,7 +77,16 @@
       <el-col :span="8">
         <div class="result-item">
           <div class="label">阀门</div>
-          <div class="value">DN{{ result.selection?.valve?.valve_dn }} (Kv={{ result.selection?.valve?.kv_rated }})</div>
+          <div class="value">
+            {{ result.selection?.valve?.valve_type === 'globe' ? '截止阀' : '蝶阀' }} DN{{ result.selection?.valve?.valve_dn }}
+          </div>
+          <div class="value" style="font-size: 12px; color: #666; margin-top: 4px;">
+            Kv={{ result.selection?.valve?.kv_required?.toFixed(1) }} / {{ result.selection?.valve?.kv_rated }}
+            开度={{ result.selection?.valve?.valve_opening?.toFixed(1) }}%
+            <span :class="getStatusClass(result.selection?.valve?.check_status)">
+              {{ getStatusMsg(result.selection?.valve) }}
+            </span>
+          </div>
         </div>
       </el-col>
     </el-row>
@@ -349,6 +358,18 @@ import { ElMessage } from 'element-plus'
 const props = defineProps(['result', 'activeMode'])
 
 const exporting = ref({ pdf: false, excel: false })
+
+// 阀门状态样式
+const getStatusClass = (status) => {
+  if (!status) return ''
+  return 'status-' + status
+}
+
+// 阀门状态文字
+const getStatusMsg = (valve) => {
+  if (!valve) return ''
+  return valve.status_msg || ''
+}
 
 // 多分离器支持
 const separators = ref([])
@@ -727,12 +748,15 @@ const exportExcel = async () => {
 </script>
 
 <style scoped>
-.result-card { margin-bottom: 20px; }
-.card-title { font-weight: 600; color: #F1F5F9; }
+.result-card { margin-bottom: 20px; background: #ffffff; border: 1px solid #dcdfe6; }
+.card-title { font-weight: 600; color: #303133; }
 .v2-actions, .export-actions { display: flex; gap: 10px; flex-wrap: wrap; }
-.separator-section, .turbine-section { margin-top: 20px; }
-.separator-item { margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid #334155; }
+.separator-section, .turbine-section { margin-top: 20px; background: #ffffff; border: 1px solid #dcdfe6; }
+.separator-item { margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid #e4e7ed; }
 .separator-item:last-child { border-bottom: none; }
-.node-params-card, .result-card { margin-top: 10px; background: #0F172A; }
-h4 { color: #00D4FF; margin: 15px 0 10px 0; font-size: 14px; }
+.node-params-card, .result-card { margin-top: 10px; background: #f5f7fa; }
+h4 { color: #303133; margin: 15px 0 10px 0; font-size: 14px; }
+.status-ok { color: #67c23a; }
+.status-warning { color: #e6a23c; }
+.status-fail { color: #f56c6c; }
 </style>

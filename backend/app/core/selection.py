@@ -24,7 +24,7 @@ PIPES = [
     700, 800, 900, 1000, 1100
 ]
 
-# 蝶阀 Kv 值表 (简化版)
+# 蝶阀 Kv 值表
 VALVES_KV = {
     50: 450,
     65: 750,
@@ -39,6 +39,12 @@ VALVES_KV = {
     400: 29000,
     450: 37000,
     500: 46000,
+}
+
+# 阀门压力恢复系数 FL (IEC 60534)
+FL_COEFFICIENTS = {
+    'butterfly': 0.68,  # 蝶阀
+    'globe': 0.85,      # 截止阀
 }
 
 def select_motor(power_shaft: float) -> float:
@@ -58,27 +64,27 @@ def select_pipe_diameter(volume_flow: float, medium: str = None, is_steam: bool 
     """
     # 设计流速
     v_design = 25 if is_steam else 15  # m/s
-    
+
     # 计算通径
     D_calc = math.sqrt(4 * volume_flow / (math.pi * v_design)) * 1000  # mm
-    
+
     # 选择最接近的标准规格
     recommended = min(PIPES, key=lambda d: abs(d - D_calc))
     idx = PIPES.index(recommended)
-    
+
     # 相邻规格
     lower = PIPES[idx - 1] if idx > 0 else None
     upper = PIPES[idx + 1] if idx < len(PIPES) - 1 else None
-    
+
     # 计算实际流速
     def calc_velocity(dn):
         area = math.pi * (dn / 1000) ** 2 / 4
         return volume_flow / area
-    
+
     v_rec = calc_velocity(recommended)
     v_lower = calc_velocity(lower) if lower else None
     v_upper = calc_velocity(upper) if upper else None
-    
+
     return {
         'recommended_dn': recommended,
         'velocity': v_rec,
@@ -89,6 +95,27 @@ def select_pipe_diameter(volume_flow: float, medium: str = None, is_steam: bool 
         'calculated_dn': D_calc,
     }
 
+def _get_saturation_temp(p_abs: float) -> float:
+    """获取水的饱和温度 (MPa.A -> °C)"""
+    try:
+        from .thermodynamics import WaterProperty
+        return WaterProperty.get_saturation_temp(p_abs)
+    except ImportError:
+        from thermodynamics import WaterProperty
+        return WaterProperty.get_saturation_temp(p_abs)
+
+def _is_superheated_steam(p_abs: float, t: float) -> bool:
+    """判断是否为过热蒸汽"""
+    if t is None:
+        return False
+    t_sat = _get_saturation_temp(p_abs)
+    return t > t_sat
+
+def _get_superheat(p_abs: float, t: float) -> float:
+    """获取过热度 (°C)"""
+    t_sat = _get_saturation_temp(p_abs)
+    return max(0, t - t_sat)
+
 def select_valve(
     flow_rate: float,
     flow_unit: str,
@@ -96,60 +123,123 @@ def select_valve(
     pipe_dn: int,
     medium_type: str,
     medium: str = None,
-    delta_p: float = 0.02,
+    delta_p_kpa: float = 30,      # 用户指定压差 (kPa)
+    valve_type: str = 'butterfly', # 阀门类型：'butterfly' 或 'globe'
     t: float = None,
+    p_in_abs: float = None,
     p_out_abs: float = None,
 ) -> Dict:
     """
-    阀门选型 (蝶阀)
+    阀门选型 (IEC 60534 标准)
     @param flow_rate: 流量
     @param flow_unit: 'T/h' or 'Nm3/h'
     @param rho: 密度 (kg/m³)
-    @param pipe_dn: 管道通径
+    @param pipe_dn: 管道通径 (参考)
     @param medium_type: 'single' or 'mix'
     @param medium: 介质
-    @param delta_p: 压差 (bar), 默认 0.02 bar (2 kPa)
+    @param delta_p_kpa: 设计压差 (kPa)
+    @param valve_type: 阀门类型 'butterfly'(蝶阀) 或 'globe'(截止阀)
     @param t: 温度 (°C)
-    @param p_out_abs: 出口绝压 (bar.A)
-    @return: {valve_dn, kv_required, kv_rated, delta_p_actual, ...}
+    @param p_in_abs: 入口绝压 (MPa.A)
+    @param p_out_abs: 出口绝压 (MPa.A)
+    @return: {valve_dn, kv_required, kv_rated, valve_opening, check_status, ...}
     """
-    # 阀门通径 = 管道通径
-    valve_dn = pipe_dn
-    
-    # 获取 Kv 值
-    kv_rated = VALVES_KV.get(valve_dn, 1000)
-    
-    # 计算所需 Kv
-    if flow_unit == 'T/h':
-        # 液体：Kv = Q × sqrt(ρ / ΔP)
-        # Q: m³/h, ρ: kg/m³, ΔP: bar
-        q_m3h = flow_rate / rho  # kg/h → m³/h
-        kv_required = q_m3h * math.sqrt(rho / delta_p)
+    FL = FL_COEFFICIENTS.get(valve_type, 0.68)
+
+    # 单位转换
+    delta_p_bar = delta_p_kpa / 100  # kPa -> bar
+    p1_bar = p_in_abs * 10 if p_in_abs else 10  # MPa -> bar
+    p2_bar = p_out_abs * 10 if p_out_abs else (p1_bar - delta_p_bar)
+
+    # 临界压差 (阻塞流判断)
+    critical_dp = FL**2 * p1_bar * 0.75
+    is_choked = delta_p_bar > critical_dp
+
+    # === 计算所需 Kv (IEC 60534 公式) ===
+    if flow_unit == 'T/h' and medium == 'H2O':
+        # 判断是否为蒸汽
+        if t is not None and t >= 100:
+            # === 蒸汽介质 ===
+            is_superheated = _is_superheated_steam(p_in_abs, t) if p_in_abs else False
+            superheat = _get_superheat(p_in_abs, t) if is_superheated else 0
+            superheat_factor = 1 + 0.0013 * superheat
+
+            if is_choked:
+                # 阻塞流
+                kv_required = flow_rate / (31.6 * FL * p1_bar * superheat_factor)
+            else:
+                # 非阻塞流
+                kv_required = flow_rate / (31.6 * math.sqrt(delta_p_bar * p2_bar) * superheat_factor)
+        else:
+            # === 液体介质 (水) ===
+            q_m3h = flow_rate / rho  # kg/h -> m³/h
+            kv_required = q_m3h * math.sqrt(rho / delta_p_bar)
+
     elif flow_unit == 'Nm3/h':
-        # 气体简化：Kv = Q / (514 × sqrt(ΔP × P2 / (ρ × T)))
-        if p_out_abs is None:
-            p_out_abs = 1.01325  # 默认大气压
-        if t is None:
-            t = 20
-        T = t + 273.15
-        p2_bar = p_out_abs * 10  # MPa → bar
-        kv_required = flow_rate / (514 * math.sqrt(delta_p * p2_bar / (rho * T)))
+        # === 气体介质 ===
+        T = (t or 20) + 273.15
+        T_ref = 273.15
+
+        if is_choked:
+            # 阻塞流
+            kv_required = flow_rate / (514 * FL * p1_bar * math.sqrt(1 / (rho * T / T_ref)))
+        else:
+            # 非阻塞流
+            kv_required = flow_rate / (514 * math.sqrt(delta_p_bar * p2_bar / (rho * T / T_ref)))
     else:
         kv_required = 0
-    
-    # 反算实际压差
-    if flow_unit == 'T/h':
-        q_m3h = flow_rate / rho
-        delta_p_actual = (q_m3h / kv_rated) ** 2 * rho
+
+    # === 按 Kv 选择阀门通径 ===
+    suitable_dn = None
+    kv_rated = 0
+
+    for dn, kv in sorted(VALVES_KV.items()):
+        if kv >= kv_required:
+            suitable_dn = dn
+            kv_rated = kv
+            break
+
+    if suitable_dn is None:
+        # 所有规格都不够，选最大的
+        suitable_dn = max(VALVES_KV.keys())
+        kv_rated = VALVES_KV[suitable_dn]
+
+    # === 计算实际开度 ===
+    valve_opening = (kv_required / kv_rated) * 100 if kv_rated > 0 else 100
+
+    # === 开度校验状态 ===
+    if valve_opening > 100:
+        check_status = 'fail'
+        status_msg = f'❌ 通径不足 (开度{valve_opening:.1f}%)，需放大一号'
+    elif valve_opening > 95:
+        check_status = 'warning'
+        status_msg = f'⚠️ 满负荷运行 (开度{valve_opening:.1f}%)，无余量'
+    elif valve_opening >= 80:
+        check_status = 'ok'
+        status_msg = f'✅ 合适 (开度{valve_opening:.1f}%)，切断阀常用范围'
+    elif valve_opening >= 50:
+        check_status = 'ok'
+        status_msg = f'✅ 合适 (开度{valve_opening:.1f}%)，有一定余量'
     else:
-        delta_p_actual = delta_p  # 简化
-    
+        check_status = 'warning'
+        status_msg = f'⚠️ 通径偏大 (开度{valve_opening:.1f}%)，可缩小一号'
+
+    # === 与管道通径对比 ===
+    dn_diff = suitable_dn - pipe_dn
+
     return {
-        'valve_dn': valve_dn,
+        'valve_dn': suitable_dn,
+        'pipe_dn': pipe_dn,
+        'valve_type': valve_type,
         'kv_required': kv_required,
         'kv_rated': kv_rated,
-        'delta_p_design': delta_p,
-        'delta_p_actual': delta_p_actual,
+        'valve_opening': valve_opening,
+        'check_status': check_status,
+        'status_msg': status_msg,
+        'delta_p_design': delta_p_kpa,
+        'fl_coefficient': FL,
+        'is_choked_flow': is_choked,
+        'dn_diff': dn_diff,
     }
 
 def calculate_pipe_flow(
@@ -169,10 +259,10 @@ def calculate_pipe_flow(
         from .thermodynamics import gauge_to_absolute, GasProperty, MixProperty, WaterProperty
     except ImportError:
         from thermodynamics import gauge_to_absolute, GasProperty, MixProperty, WaterProperty
-    
+
     p_abs = gauge_to_absolute(p_gauge)
     T = t + 273.15
-    
+
     if flow_unit == 'T/h':
         if medium_type == 'single' and medium == 'H2O':
             rho = WaterProperty.get_state(p_abs, t)['rho']
@@ -186,27 +276,36 @@ def calculate_pipe_flow(
         volume_flow = flow_rate / 3600 * (0.101325 / p_abs) * (T / 273.15)
     else:
         volume_flow = 0
-    
+
     return volume_flow
 
 if __name__ == '__main__':
     print("=== Selection Module Test ===\n")
-    
+
     print("1. Motor Selection (700 kW shaft):")
     motor = select_motor(700)
     print(f"   Selected: {motor} kW")
-    
+
     print("\n2. Pipe Selection (0.5 m³/s, air):")
     pipe = select_pipe_diameter(0.5)
     print(f"   Recommended: DN{pipe['recommended_dn']} (v={pipe['velocity']:.2f} m/s)")
-    if pipe['lower_dn']:
-        print(f"   Lower: DN{pipe['lower_dn']} (v={pipe['lower_velocity']:.2f} m/s)")
-    if pipe['upper_dn']:
-        print(f"   Upper: DN{pipe['upper_dn']} (v={pipe['upper_velocity']:.2f} m/s)")
-    
-    print("\n3. Valve Selection (DN65, water 100 T/h):")
-    valve = select_valve(100, 'T/h', 1000, 65, 'single', 'H2O')
-    print(f"   Valve DN: {valve['valve_dn']}, Kv_req: {valve['kv_required']:.1f}, Kv_rated: {valve['kv_rated']}")
-    print(f"   ΔP: {valve['delta_p_actual']*100:.2f} kPa")
-    
+
+    print("\n3. Valve Selection (butterfly, gas 1000 Nm3/h, ΔP=30kPa):")
+    valve = select_valve(1000, 'Nm3/h', 1.2, 80, 'single', 'N2',
+                         delta_p_kpa=30, valve_type='butterfly',
+                         t=25, p_in_abs=0.6, p_out_abs=0.57)
+    print(f"   Type: {valve['valve_type']}, DN: {valve['valve_dn']}")
+    print(f"   Kv_req: {valve['kv_required']:.1f}, Kv_rated: {valve['kv_rated']}")
+    print(f"   Opening: {valve['valve_opening']:.1f}%, Status: {valve['check_status']}")
+    print(f"   {valve['status_msg']}")
+
+    print("\n4. Valve Selection (globe, steam 5 T/h, ΔP=50kPa):")
+    valve = select_valve(5, 'T/h', 0.6, 50, 'single', 'H2O',
+                         delta_p_kpa=50, valve_type='globe',
+                         t=200, p_in_abs=0.6, p_out_abs=0.55)
+    print(f"   Type: {valve['valve_type']}, DN: {valve['valve_dn']}")
+    print(f"   Kv_req: {valve['kv_required']:.1f}, Kv_rated: {valve['kv_rated']}")
+    print(f"   Opening: {valve['valve_opening']:.1f}%, Status: {valve['check_status']}")
+    print(f"   {valve['status_msg']}")
+
     print("\n[OK] Selection module test passed!")

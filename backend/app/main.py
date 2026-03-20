@@ -132,10 +132,16 @@ def calculate_mode1(req: Mode1Request):
             req.cold_side.medium_type, req.cold_side.medium,
             req.cold_side.mix_composition, req.cold_side.composition_type,
         )
+        # 阀门参数（从 cold_side 中读取，新增 valve_dp 和 valve_type）
+        valve_dp = req.cold_side.get('valve_dp', 30)  # kPa
+        valve_type = req.cold_side.get('valve_type', 'butterfly')
         valve = select_valve(
             req.cold_side.flow_rate, req.cold_side.flow_unit,
             state_in['rho'], pipe_in['recommended_dn'],
             req.cold_side.medium_type, req.cold_side.medium,
+            delta_p_kpa=valve_dp, valve_type=valve_type,
+            t=req.cold_side.t_in, p_in_abs=req.cold_side.p_in + 0.101325,
+            p_out_abs=req.cold_side.p_out + 0.101325,
         )
         
         return {

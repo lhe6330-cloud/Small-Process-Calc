@@ -58,10 +58,27 @@
       
       <!-- 混合介质组分输入 -->
       <div v-if="form.turbine_in.medium_type === 'mix'">
-        <MixCompositionInput 
+        <MixCompositionInput
           v-model="form.turbine_in.mixData"
         />
       </div>
+
+      <!-- 阀门参数 -->
+      <el-row :gutter="20" style="margin-top: 10px; padding-top: 15px; border-top: 1px solid #e4e7ed;">
+        <el-col :span="8">
+          <el-form-item label="阀门压差 (kPa)">
+            <el-input-number v-model="form.turbine_in.valve_dp" :min="1" :max="500" :step="5" />
+          </el-form-item>
+        </el-col>
+        <el-col :span="8">
+          <el-form-item label="阀门类型">
+            <el-select v-model="form.turbine_in.valve_type">
+              <el-option label="蝶阀" value="butterfly" />
+              <el-option label="截止阀" value="globe" />
+            </el-select>
+          </el-form-item>
+        </el-col>
+      </el-row>
     </el-card>
 
     <el-card class="form-card">
@@ -160,7 +177,9 @@ const form = reactive({
     flow_unit: 'Nm3/h',
     p_in: 0.6,
     p_out: 0.3,
-    t_in: 250
+    t_in: 250,
+    valve_dp: 30,        // 阀门压差默认值 (kPa)
+    valve_type: 'butterfly'  // 阀门类型默认值
   },
   turbine_params: { p_out: 0.3, adiabatic_efficiency: 85 },
   hx_cold_out: { p_out: 0.28, t_out: 150 },
@@ -306,7 +325,7 @@ const submit = async () => {
 </script>
 
 <style scoped>
-.form-card { margin-bottom: 20px; background: #1E293B; border: 1px solid #00D4FF; }
-.card-title { color: #00D4FF; font-weight: bold; }
-:deep(.el-card__header) { background: #0F172A; border-bottom: 1px solid #334155; }
+.form-card { margin-bottom: 20px; background: #ffffff; border: 1px solid #dcdfe6; }
+.card-title { color: #303133; font-weight: bold; }
+:deep(.el-card__header) { background: #f5f7fa; border-bottom: 1px solid #dcdfe6; }
 </style>
