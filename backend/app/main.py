@@ -448,6 +448,26 @@ class VleRequest(BaseModel):
     flow_unit: str = Field(default='T/h', description="流量单位")
 
 
+class PipeValveRequest(BaseModel):
+    """管道/阀门计算请求"""
+    flow_rate: float = Field(description="流量")
+    flow_unit: str = Field(description="流量单位 (Nm3/h 或 T/h)")
+    p_gauge: float = Field(description="压力 (MPa.G)")
+    t: float = Field(description="温度 (°C)")
+    medium_type: str = Field(description="介质类型 (single/mix)")
+    medium: Optional[str] = Field(default=None, description="介质")
+    mix_composition: Optional[Dict[str, float]] = Field(default=None, description="混合介质组成")
+    # 阀门计算参数
+    rho: Optional[float] = Field(default=None, description="密度 (kg/m³)")
+    pipe_dn: Optional[int] = Field(default=None, description="管道通径 (mm)")
+    delta_p_kpa: Optional[float] = Field(default=None, description="阀门压差 (kPa)")
+    valve_type: Optional[str] = Field(default=None, description="阀门类型 (butterfly/globe)")
+    p_in_abs: Optional[float] = Field(default=None, description="入口绝压 (MPa.A)")
+    p_out_abs: Optional[float] = Field(default=None, description="出口绝压 (MPa.A)")
+    medium_state: Optional[str] = Field(default=None, description="介质状态 (gas/liquid/steam)")
+    specified_dn: Optional[int] = Field(default=None, description="用户指定通径 (mm)")
+
+
 class SeparatorRequest(BaseModel):
     """分离器计算请求"""
     source_mode: str = Field(description="来源模式 (mode1/mode2/mode3)")
@@ -498,6 +518,68 @@ def calculate_vle(req: VleRequest):
             p_unit='MPa.G'
         )
         return result
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/calculate/pipe")
+def calculate_pipe(req: PipeValveRequest):
+    """管道通径计算"""
+    try:
+        vol_flow = calculate_pipe_flow(
+            req.flow_rate,
+            req.flow_unit,
+            req.p_gauge,
+            req.t,
+            req.medium_type,
+            req.medium,
+            req.mix_composition if req.mix_composition else None,
+        )
+        is_steam = req.medium == 'H2O' and req.t > 100
+        pipe_result = select_pipe_diameter(vol_flow, req.medium, is_steam)
+        return {
+            "success": True,
+            "rho": pipe_result.get('rho', 1.2),
+            "velocity": pipe_result.get('velocity', 0),
+            "recommended_dn": pipe_result.get('recommended_dn', 0),
+            "calculated_dn": pipe_result.get('calculated_dn', 0),
+            "lower_dn": pipe_result.get('lower_dn'),
+            "upper_dn": pipe_result.get('upper_dn'),
+            "lower_velocity": pipe_result.get('lower_velocity'),
+            "upper_velocity": pipe_result.get('upper_velocity'),
+        }
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/calculate/valve")
+def calculate_valve(req: PipeValveRequest):
+    """阀门选型计算"""
+    try:
+        print(f"[DEBUG] valve API: specified_dn={req.specified_dn}, valve_type={req.valve_type}, pipe_dn={req.pipe_dn}")
+        if not req.rho or not req.pipe_dn:
+            raise HTTPException(status_code=400, detail="阀门计算需要提供 rho 和 pipe_dn")
+        if not req.delta_p_kpa or not req.valve_type:
+            raise HTTPException(status_code=400, detail="阀门计算需要提供 delta_p_kpa 和 valve_type")
+
+        valve_result = select_valve(
+            req.flow_rate,
+            req.flow_unit,
+            req.rho,
+            req.pipe_dn,
+            req.medium_type,
+            req.medium,
+            delta_p_kpa=req.delta_p_kpa,
+            valve_type=req.valve_type,
+            t=req.t,
+            p_in_abs=req.p_in_abs,
+            p_out_abs=req.p_out_abs,
+            medium_state=req.medium_state,
+            specified_dn=req.specified_dn,
+        )
+        return {"success": True, **valve_result}
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))

@@ -62,23 +62,6 @@
           v-model="form.turbine_in.mixData"
         />
       </div>
-
-      <!-- 阀门参数 -->
-      <el-row :gutter="20" style="margin-top: 10px; padding-top: 15px; border-top: 1px solid #e4e7ed;">
-        <el-col :span="8">
-          <el-form-item label="阀门压差 (kPa)">
-            <el-input-number v-model="form.turbine_in.valve_dp" :min="1" :max="500" :step="5" />
-          </el-form-item>
-        </el-col>
-        <el-col :span="8">
-          <el-form-item label="阀门类型">
-            <el-select v-model="form.turbine_in.valve_type">
-              <el-option label="蝶阀" value="butterfly" />
-              <el-option label="截止阀" value="globe" />
-            </el-select>
-          </el-form-item>
-        </el-col>
-      </el-row>
     </el-card>
     
     <el-button type="primary" size="large" @click="submit" :loading="loading" style="margin-top:20px;width:200px;">🚀 开始计算</el-button>
@@ -86,7 +69,7 @@
 </template>
 
 <script setup>
-import { reactive, ref } from 'vue'
+import { reactive, ref, onMounted } from 'vue'
 import axios from 'axios'
 import MixCompositionInput from '../common/MixCompositionInput.vue'
 
@@ -103,8 +86,6 @@ const form = reactive({
     p_in: 0.6,
     p_out: 0.3,
     t_in: 250,
-    valve_dp: 30,        // 阀门压差默认值 (kPa)
-    valve_type: 'butterfly'  // 阀门类型默认值
   },
   turbine_params: { p_out: 0.3, adiabatic_efficiency: 85 }
 })
@@ -187,8 +168,9 @@ const submit = async () => {
       turbine_params: { ...form.turbine_params }
     }
 
-    // 保存输入数据到 localStorage 供导出使用
+    // 保存输入数据到 localStorage 供导出使用和持久化
     localStorage.setItem('lastInputData_mode3', JSON.stringify(inputData))
+    localStorage.setItem('mode3_input', JSON.stringify(inputData)) // 持久化输入数据
 
     const res = await axios.post('/api/calculate/mode3', inputData)
 
@@ -199,6 +181,17 @@ const submit = async () => {
       return
     }
 
+    // 保存完整的计算结果（输入 + 输出）供其他模块使用
+    const fullResultData = {
+      ...inputData,
+      turbine: {
+        ...inputData.turbine_in,  // 涡轮入口参数
+        p_out: inputData.turbine_params.p_out,  // 涡轮出口压力
+        ...res.data.turbine  // 合并后端返回的涡轮计算结果
+      }
+    }
+    localStorage.setItem('lastInputData_mode3', JSON.stringify(fullResultData))
+
     emit('calculate', res.data)
   } catch (e) {
     alert('计算失败：' + e.message)
@@ -206,6 +199,36 @@ const submit = async () => {
     loading.value = false
   }
 }
+
+// 组件挂载时从 localStorage 读取数据
+onMounted(() => {
+  const storedData = localStorage.getItem('mode3_input')
+  if (storedData) {
+    try {
+      const parsed = JSON.parse(storedData)
+      // 恢复涡轮入口数据
+      if (parsed.turbine_in) {
+        const turbineIn = parsed.turbine_in
+        form.turbine_in.medium_type = turbineIn.medium_type || 'single'
+        form.turbine_in.medium = turbineIn.medium || 'N2'
+        form.turbine_in.flow_rate = turbineIn.flow_rate || 1000
+        form.turbine_in.flow_unit = turbineIn.flow_unit || 'Nm3/h'
+        form.turbine_in.p_in = turbineIn.p_in || 0.6
+        form.turbine_in.t_in = turbineIn.t_in || 250
+        if (turbineIn.mix_composition) {
+          form.turbine_in.mixData = { composition: turbineIn.mix_composition, composition_type: turbineIn.composition_type || 'mole' }
+        }
+      }
+      // 恢复涡轮参数
+      if (parsed.turbine_params) {
+        form.turbine_params.p_out = parsed.turbine_params.p_out || 0.3
+        form.turbine_params.adiabatic_efficiency = parsed.turbine_params.adiabatic_efficiency || 85
+      }
+    } catch (e) {
+      console.error('读取历史数据失败', e)
+    }
+  }
+})
 </script>
 
 <style scoped>

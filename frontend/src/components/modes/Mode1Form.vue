@@ -33,14 +33,14 @@
           </el-form-item>
         </el-col>
       </el-row>
-      
+
       <!-- 混合介质组分输入 -->
       <div v-if="form.cold.medium_type === 'mix'">
-        <MixCompositionInput 
+        <MixCompositionInput
           v-model="form.cold.mixData"
         />
       </div>
-      
+
       <el-row :gutter="20">
         <el-col :span="6">
           <el-form-item label="入口压力 (MPa.G)">
@@ -60,23 +60,6 @@
         <el-col :span="6">
           <el-form-item label="出口温度 (°C)">
             <el-input-number v-model="form.cold.t_out" :min="-273" :step="10" />
-          </el-form-item>
-        </el-col>
-      </el-row>
-
-      <!-- 阀门参数 -->
-      <el-row :gutter="20" style="margin-top: 10px; padding-top: 15px; border-top: 1px solid #e4e7ed;">
-        <el-col :span="8">
-          <el-form-item label="阀门压差 (kPa)">
-            <el-input-number v-model="form.cold.valve_dp" :min="1" :max="500" :step="5" />
-          </el-form-item>
-        </el-col>
-        <el-col :span="8">
-          <el-form-item label="阀门类型">
-            <el-select v-model="form.cold.valve_type">
-              <el-option label="蝶阀" value="butterfly" />
-              <el-option label="截止阀" value="globe" />
-            </el-select>
           </el-form-item>
         </el-col>
       </el-row>
@@ -115,14 +98,14 @@
           </el-form-item>
         </el-col>
       </el-row>
-      
+
       <!-- 混合介质组分输入 -->
       <div v-if="form.hot.medium_type === 'mix'">
-        <MixCompositionInput 
+        <MixCompositionInput
           v-model="form.hot.mixData"
         />
       </div>
-      
+
       <el-row :gutter="20">
         <el-col :span="6">
           <el-form-item label="入口压力 (MPa.G)">
@@ -165,7 +148,7 @@
 </template>
 
 <script setup>
-import { reactive, ref } from 'vue'
+import { reactive, ref, onMounted } from 'vue'
 import axios from 'axios'
 import MixCompositionInput from '../common/MixCompositionInput.vue'
 
@@ -183,20 +166,64 @@ const form = reactive({
     p_out: 0.48,
     t_in: 20,
     t_out: 200,
-    valve_dp: 30,        // 阀门压差默认值 (kPa)
-    valve_type: 'butterfly'  // 阀门类型默认值
   },
-  hot: { 
-    medium_type: 'single', 
-    medium: 'H2O', 
+  hot: {
+    medium_type: 'single',
+    medium: 'H2O',
     mixData: { composition: { N2: 0, O2: 0, H2: 0, CO2: 0, H2O: 0 }, composition_type: 'mole' },
-    flow_rate: 0.5, 
-    flow_unit: 'T/h', 
-    p_in: 0.6, 
-    p_out: 0.55, 
-    t_in: 250 
+    flow_rate: 0.5,
+    flow_unit: 'T/h',
+    p_in: 0.6,
+    p_out: 0.55,
+    t_in: 250
   },
   turbine: { p_out: 0.1, adiabatic_efficiency: 85 }
+})
+
+// 组件挂载时从 localStorage 读取数据
+onMounted(() => {
+  const storedData = localStorage.getItem('mode1_input')
+  if (storedData) {
+    try {
+      const parsed = JSON.parse(storedData)
+      // 恢复冷边数据
+      if (parsed.cold_side) {
+        const cold = parsed.cold_side
+        form.cold.medium_type = cold.medium_type || 'single'
+        form.cold.medium = cold.medium || 'N2'
+        form.cold.flow_rate = cold.flow_rate || 1000
+        form.cold.flow_unit = cold.flow_unit || 'Nm3/h'
+        form.cold.p_in = cold.p_in || 0.5
+        form.cold.p_out = cold.p_out || 0.48
+        form.cold.t_in = cold.t_in || 20
+        form.cold.t_out = cold.t_out || 200
+        if (cold.mix_composition) {
+          form.cold.mixData = { composition: cold.mix_composition, composition_type: cold.composition_type || 'mole' }
+        }
+      }
+      // 恢复热边数据
+      if (parsed.hot_side) {
+        const hot = parsed.hot_side
+        form.hot.medium_type = hot.medium_type || 'single'
+        form.hot.medium = hot.medium || 'H2O'
+        form.hot.flow_rate = hot.flow_rate || 0.5
+        form.hot.flow_unit = hot.flow_unit || 'T/h'
+        form.hot.p_in = hot.p_in || 0.6
+        form.hot.p_out = hot.p_out || 0.55
+        form.hot.t_in = hot.t_in || 250
+        if (hot.mix_composition) {
+          form.hot.mixData = { composition: hot.mix_composition, composition_type: hot.composition_type || 'mole' }
+        }
+      }
+      // 恢复涡轮数据
+      if (parsed.turbine) {
+        form.turbine.p_out = parsed.turbine.p_out || 0.1
+        form.turbine.adiabatic_efficiency = parsed.turbine.adiabatic_efficiency || 85
+      }
+    } catch (e) {
+      console.error('读取历史数据失败', e)
+    }
+  }
 })
 
 // 水/水蒸气时自动切换流量单位
@@ -205,7 +232,6 @@ function onMediumChange(side) {
   if (medium === 'H2O') {
     form[side].flow_unit = 'T/h'
   } else if (form[side].flow_unit === 'T/h') {
-    // 只有当前是 T/h 时才切换回 Nm3/h（避免覆盖用户手动选择）
     form[side].flow_unit = 'Nm3/h'
   }
 }
@@ -213,10 +239,8 @@ function onMediumChange(side) {
 // 介质类型切换时初始化
 function onMediumTypeChange(side) {
   if (form[side].medium_type === 'mix' && form[side].medium === 'H2O') {
-    // 从 H2O 切换到混合介质时，保持 T/h
     form[side].flow_unit = 'T/h'
   } else if (form[side].medium_type === 'single') {
-    // 切换回单一介质时，根据当前介质决定单位
     onMediumChange(side)
   }
 }
@@ -237,13 +261,13 @@ const submit = async () => {
       return
     }
   }
-  
+
   loading.value = true
   try {
     // 构建请求数据
-    const coldData = form.cold.medium_type === 'single' 
-      ? { 
-          medium_type: 'single', 
+    const coldData = form.cold.medium_type === 'single'
+      ? {
+          medium_type: 'single',
           medium: form.cold.medium,
           flow_rate: form.cold.flow_rate,
           flow_unit: form.cold.flow_unit,
@@ -263,7 +287,7 @@ const submit = async () => {
           t_in: form.cold.t_in,
           t_out: form.cold.t_out
         }
-    
+
     const hotData = form.hot.medium_type === 'single'
       ? {
           medium_type: 'single',
@@ -284,19 +308,30 @@ const submit = async () => {
           p_out: form.hot.p_out,
           t_in: form.hot.t_in
         }
-    
+
     const inputData = {
       cold_side: coldData,
       hot_side: hotData,
       turbine: { ...form.turbine }
     }
-    
-    // 保存输入数据到 localStorage 供导出使用
+
+    // 保存输入数据到 localStorage 供导出使用和持久化
     localStorage.setItem('lastInputData', JSON.stringify(inputData))
     localStorage.setItem('lastInputData_mode1', JSON.stringify(inputData))
-    
+    localStorage.setItem('mode1_input', JSON.stringify(inputData)) // 持久化输入数据
+
     const res = await axios.post('/api/calculate/mode1', inputData)
-    
+
+    // 保存完整的计算结果（输入 + 输出）供其他模块使用
+    const fullResultData = {
+      ...inputData,
+      turbine: {
+        ...inputData.turbine,
+        ...res.data.turbine  // 合并后端返回的涡轮计算结果
+      }
+    }
+    localStorage.setItem('lastInputData_mode1', JSON.stringify(fullResultData))
+
     // 处理后端返回的错误
     if (res.data.error) {
       emit('calculate', res.data)  // 传递错误信息给 ResultPanel 显示
