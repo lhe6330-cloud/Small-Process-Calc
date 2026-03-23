@@ -123,10 +123,12 @@ def calculate_turbine(
     t_out = None
 
     if medium_type == 'single' and medium == 'H2O':
-        # 单一 H2O：用 IF97 直接计算
-        state_out = WaterProperty.get_state_ph(p_out_abs, h_out)
+        # 单一 H2O：用 IF97 直接计算（考虑相变潜热）
+        # 从实际膨胀焓计算出口状态
+        state_out = WaterProperty.get_state_ph(p_out_abs, h_out_no_phase)
         x_out = state_out.get('x')
         t_out = state_out['T'] - 273.15
+        h_out = state_out['h']  # 保存出口焓用于后续功率计算
         if x_out is not None:
             liquid_percent = (1 - x_out) * 100
             if liquid_percent > 5:
