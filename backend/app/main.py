@@ -108,7 +108,7 @@ def calculate_mode1(req: Mode1Request):
             return turbine_result
 
         motor = select_motor(turbine_result['power_shaft'])
-        
+
         vol_in = calculate_pipe_flow(
             req.cold_side.flow_rate, req.cold_side.flow_unit,
             req.cold_side.p_in, req.cold_side.t_in,
@@ -117,7 +117,7 @@ def calculate_mode1(req: Mode1Request):
         )
         is_steam = req.cold_side.medium == 'H2O' and req.cold_side.t_in > 100
         pipe_in = select_pipe_diameter(vol_in, req.cold_side.medium, is_steam)
-        
+
         vol_out = calculate_pipe_flow(
             req.cold_side.flow_rate, req.cold_side.flow_unit,
             req.turbine.p_out, turbine_result['t_out'],

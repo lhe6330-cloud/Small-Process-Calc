@@ -86,8 +86,13 @@ def select_pipe_diameter(volume_flow: float, medium: str = None, is_steam: bool 
     @param is_steam: 是否水蒸气
     @return: {recommended_dn, velocity, lower_dn, lower_velocity, upper_dn, upper_velocity}
     """
-    # 设计流速
-    v_design = 25 if is_steam else 15  # m/s
+    # 设计流速：气体 15 m/s, 蒸汽 25 m/s, 液体 1.5 m/s
+    # 向后兼容：支持字符串参数 'gas'/'steam'/'liquid'
+    if isinstance(is_steam, str):
+        v_design_map = {'gas': 15, 'steam': 25, 'liquid': 1.5}
+        v_design = v_design_map.get(is_steam, 15)
+    else:
+        v_design = 25 if is_steam else 15  # m/s
 
     # 计算通径
     D_calc = math.sqrt(4 * volume_flow / (math.pi * v_design)) * 1000  # mm
