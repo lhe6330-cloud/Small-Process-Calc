@@ -175,27 +175,31 @@ def calculate_turbine(
         inlet_liquid_frac = 0.0  # 过热蒸汽，无液相
     elif medium_type == 'mix' and mix_composition:
         # 混合介质：自动计算进口含液量
-        inlet_liquid_frac = calc_inlet_liquid_frac(p_in_gauge, t_in, mix_composition)
+        # 先将百分比格式转换为小数格式
+        mix_comp_decimal = {k: v / 100.0 for k, v in mix_composition.items()}
+        inlet_liquid_frac = calc_inlet_liquid_frac(p_in_gauge, t_in, mix_comp_decimal)
     else:
         inlet_liquid_frac = 0.0  # 单一气体（N2/O2 等），无液相
 
     # ============ 步骤 2: 进口状态计算 ============
 
     # 初始化 vapor_comp（用于后续冷凝计算）
-    vapor_comp = mix_composition if medium_type == 'mix' else None
+    # 使用小数格式
+    vapor_comp = {k: v / 100.0 for k, v in mix_composition.items()} if medium_type == 'mix' and mix_composition else None
 
     # 计算进口焓/熵（考虑含液）
     if medium_type == 'mix' and inlet_liquid_frac > 0.001:
         # 两相进口：分别计算气相和液相
 
         # 气相组成（扣除冷凝的水）
-        y_h2o_total = mix_composition.get('H2O', 0)
+        y_h2o_total = vapor_comp.get('H2O', 0) if vapor_comp else 0
         y_h2o_vapor = y_h2o_total - inlet_liquid_frac
-        vapor_comp = {k: v for k, v in mix_composition.items()}
-        vapor_comp['H2O'] = y_h2o_vapor
-        # 归一化
-        total_vapor = sum(vapor_comp.values())
-        vapor_comp = {k: v / total_vapor for k, v in vapor_comp.items()}
+        if vapor_comp:
+            vapor_comp['H2O'] = y_h2o_vapor
+            # 归一化
+            total_vapor = sum(vapor_comp.values())
+            if total_vapor > 0:
+                vapor_comp = {k: v / total_vapor for k, v in vapor_comp.items()}
 
         # 气相焓/熵
         state_in_vapor = MixProperty.get_state(p_in_abs, t_in, vapor_comp, composition_type)
@@ -253,14 +257,18 @@ def calculate_turbine(
             if liquid_percent > 5:
                 liquid_warning = f'出口含液率 {liquid_percent:.1f}%，超过 5% 建议值！'
 
-    elif medium_type == 'mix' and mix_composition and mix_composition.get('H2O', 0) > 0.005:
+    elif medium_type == 'mix' and mix_composition and mix_composition.get('H2O', 0) > 0.5:
         # 混合介质含水：需要相变潜热修正（使用二分法）
+        # 注意：mix_composition 是百分比格式（如 {N2: 98, H2O: 2}），先转换为小数
+
+        # 将百分比格式转换为小数格式
+        mix_comp_decimal = {k: v / 100.0 for k, v in mix_composition.items()}
 
         # 计算质量分数和流量相关参数
         M_N2 = 28.01
         M_H2O = 18.02
-        y_N2_in = mix_composition.get('N2', 0)
-        y_H2O_in = mix_composition.get('H2O', 0)
+        y_N2_in = mix_comp_decimal.get('N2', 0)
+        y_H2O_in = mix_comp_decimal.get('H2O', 0)
         denom = y_N2_in * M_N2 + y_H2O_in * M_H2O
         mass_N2_frac = (y_N2_in * M_N2) / denom
         mass_H2O_frac = (y_H2O_in * M_H2O) / denom
@@ -274,8 +282,9 @@ def calculate_turbine(
         else:
             m_dot = flow_rate  # 默认
 
-        y_N2_in_vapor = vapor_comp.get('N2', 0) if vapor_comp else mix_composition.get('N2', 0)
-        y_H2O_in_vapor = vapor_comp.get('H2O', 0) if vapor_comp else mix_composition.get('H2O', 0)
+        # 气相组成（vapor_comp 已经是小数格式）
+        y_N2_in_vapor = vapor_comp.get('N2', 0) if vapor_comp else mix_comp_decimal.get('N2', 0)
+        y_H2O_in_vapor = vapor_comp.get('H2O', 0) if vapor_comp else mix_comp_decimal.get('H2O', 0)
 
         # 目标功率（无相变近似）
         P_target = m_dot * (h_in - h_out_no_phase)
@@ -298,7 +307,7 @@ def calculate_turbine(
                 t_in=t_in,
                 p_out_abs=p_out_abs,
                 m_dot=m_dot,
-                mix_composition=mix_composition,
+                mix_composition=mix_comp_decimal,
                 composition_type=composition_type,
                 mass_N2_frac=mass_N2_frac,
                 mass_H2O_frac=mass_H2O_frac,
@@ -332,7 +341,7 @@ def calculate_turbine(
                 t_in=t_in,
                 p_out_abs=p_out_abs,
                 m_dot=m_dot,
-                mix_composition=mix_composition,
+                mix_composition=mix_comp_decimal,
                 composition_type=composition_type,
                 mass_N2_frac=mass_N2_frac,
                 mass_H2O_frac=mass_H2O_frac,
