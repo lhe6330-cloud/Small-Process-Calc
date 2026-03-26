@@ -299,6 +299,8 @@ def calculate_turbine(
         liquid_frac_bisection = 0.0
         P_calc_bisection = 0.0
         delta_h_bisection = 0.0
+        latent_h_bisection = 0.0
+        sensible_h_bisection = 0.0
 
         for iteration in range(max_iter):
             t_mid = (t_min + t_max) / 2
@@ -325,6 +327,8 @@ def calculate_turbine(
                 liquid_frac_bisection = result['liquid_frac']
                 P_calc_bisection = P_calc
                 delta_h_bisection = result['delta_h']
+                latent_h_bisection = result['latent_h']
+                sensible_h_bisection = result['sensible_h']
                 break
 
             if error > 0:
@@ -354,6 +358,8 @@ def calculate_turbine(
             liquid_frac_bisection = result['liquid_frac']
             P_calc_bisection = result['P_calc']
             delta_h_bisection = result['delta_h']
+            latent_h_bisection = result['latent_h']
+            sensible_h_bisection = result['sensible_h']
 
         t_out = t_out_bisection
         liquid_frac_total = inlet_liquid_frac + liquid_frac_bisection
@@ -365,6 +371,83 @@ def calculate_turbine(
         # 出口焓（用于功率计算）
         h_out = h_in - delta_h_bisection
         x_out = None
+
+        # 保存相变潜热值
+        latent_power = m_dot * latent_h_bisection  # kW
+        sensible_power = m_dot * sensible_h_bisection  # kW
+
+        # ============ 相变补偿计算 ============
+        # 经验公式：轴功率补偿 = 原轴功率 + 相变潜热 × 0.13
+        # 然后根据补偿后的功率重新迭代出口温度
+        power_base = m_dot * delta_h_bisection  # 基础轴功率（无补偿）
+        power_compensated = power_base + latent_power * 0.13  # 补偿后的目标功率
+
+        # 重新迭代出口温度（根据补偿后的功率）
+        # 目标：找到新的 t_out，使得新温度下的基础功率 = power_compensated
+        # 注意：第二次迭代时不再应用补偿公式，直接找温度使得基础功率等于目标值
+
+        # 二分法重新迭代温度
+        t_min2 = -40.0
+        t_max2 = t_in
+        t_out_final = t_out_bisection
+
+        # 记录第二次迭代过程
+        iteration_history = []
+
+        for iter_idx in range(30):
+            t_mid = (t_min2 + t_max2) / 2
+            result = calc_power_for_turbine(
+                t_out=t_mid,
+                t_in=t_in,
+                p_out_abs=p_out_abs,
+                m_dot=m_dot,
+                mix_composition=mix_comp_decimal,
+                composition_type=composition_type,
+                mass_N2_frac=mass_N2_frac,
+                mass_H2O_frac=mass_H2O_frac,
+                y_N2_in=y_N2_in_vapor,
+                y_H2O_in=y_H2O_in_vapor,
+                M_N2=M_N2,
+                M_H2O=M_H2O,
+                denom=denom
+            )
+            # 第二次迭代：只计算基础功率（不应用补偿公式）
+            P_base = m_dot * result['delta_h']
+            error = P_base - power_compensated
+
+            iteration_history.append({
+                'iter': iter_idx + 1,
+                't_mid': round(t_mid, 6),
+                'P_base': round(P_base, 6),
+                'target_P': round(power_compensated, 6),
+                'error': round(error, 6)
+            })
+
+            if abs(error) / power_compensated < 0.001:
+                t_out_final = t_mid
+                # 更新最终结果
+                liquid_frac_bisection = result['liquid_frac']
+                delta_h_bisection = result['delta_h']
+                latent_h_bisection = result['latent_h']
+                sensible_h_bisection = result['sensible_h']
+                latent_power = m_dot * latent_h_bisection
+                sensible_power = m_dot * sensible_h_bisection
+                break
+
+            if error > 0:
+                t_min2 = t_mid  # 功率太大，温度太高
+            else:
+                t_max2 = t_mid  # 功率太小，温度太低
+
+        t_out = t_out_final
+        liquid_frac_total = inlet_liquid_frac + liquid_frac_bisection
+        liquid_percent = liquid_frac_total * 100
+
+        if liquid_percent > 5:
+            liquid_warning = f'出口含液率 {liquid_percent:.1f}%，超过 5% 建议值！'
+
+        # 最终出口焓
+        h_out = h_in - delta_h_bisection
 
     else:
         # 不含水或单一气体：无相变
@@ -380,6 +463,10 @@ def calculate_turbine(
             except:
                 t_out = 0  # 计算失败时的默认值
             x_out = None
+
+        # 无相变时，显热功率=总功率，潜热功率=0
+        sensible_power = power_shaft
+        latent_power = 0
 
     # ============ 步骤 5: 质量流量和功率计算 ============
 
@@ -397,8 +484,13 @@ def calculate_turbine(
     else:
         raise ValueError(f"Unknown flow_unit: {flow_unit}")
 
-    # 功率（用实际焓降计算）
-    power_shaft = mass_flow * (h_in - h_out)
+    # 功率计算
+    if medium_type == 'mix' and mix_composition and mix_composition.get('H2O', 0) > 0.5:
+        # 相变补偿情况：第二次迭代已找到新温度，功率 = 补偿后的目标功率
+        power_shaft = power_compensated if 'power_compensated' in dir() else mass_flow * (h_in - h_out)
+    else:
+        power_shaft = mass_flow * (h_in - h_out)
+
     power_electric = power_shaft * 0.9
 
     return {
@@ -413,6 +505,9 @@ def calculate_turbine(
         'h_out': h_out,
         'mass_flow': mass_flow,
         'rho_in': rho_in,
+        'sensible_power': sensible_power if medium_type == 'mix' and mix_composition and mix_composition.get('H2O', 0) > 0.5 else 0,
+        'latent_power': latent_power if medium_type == 'mix' and mix_composition and mix_composition.get('H2O', 0) > 0.5 else 0,
+        'iteration_history': iteration_history if medium_type == 'mix' and mix_composition and mix_composition.get('H2O', 0) > 0.5 else [],
     }
 
 if __name__ == '__main__':

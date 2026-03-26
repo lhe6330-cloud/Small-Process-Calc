@@ -156,6 +156,9 @@ def calculate_mode3(turbine_in: Dict, turbine_params: Dict) -> Dict:
             "rho_in": turbine_result.get('rho_in'),
             "rho_out": turbine_result.get('rho_out'),
             "mass_flow": turbine_result.get('mass_flow'),
+            "sensible_power": turbine_result.get('sensible_power', 0),
+            "latent_power": turbine_result.get('latent_power', 0),
+            "iteration_history": turbine_result.get('iteration_history', []),
         },
         "selection": {"motor": motor, "pipe_inlet": pipe_in, "pipe_outlet": pipe_out, "valve": valve}
     }
