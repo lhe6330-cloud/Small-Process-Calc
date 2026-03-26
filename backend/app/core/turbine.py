@@ -4,9 +4,10 @@
 - 单一介质（H2O/N2/O2/Air/CO2/H2）
 - 混合介质（N2+O2+H2O 等）
 - 进口含液自动判断（0-5% 含水量）
-- 相变潜热修正（联合迭代能量平衡）
+- 相变潜热修正（二分法 + 低温饱和蒸气压公式）
 """
 import sys
+import math
 sys.stdout.reconfigure(encoding='utf-8')
 
 try:
@@ -24,6 +25,124 @@ except ImportError:
     )
     from vle import calc_inlet_liquid_frac
 from typing import Dict
+from CoolProp.CoolProp import PropsSI
+
+
+def p_sat_water(t_celsius: float) -> float:
+    """
+    计算水的饱和蒸气压（支持 -60°C 到 +200°C）
+    分段公式：
+    1. T >= 0°C: CoolProp (IAPWS-IF97)
+    2. -40°C <= T < 0°C: Wexler-Hyland (ASHRAE 标准)
+    3. T < -40°C: Goff-Gratch (气象学标准)
+    """
+    if t_celsius >= 0:
+        # 0°C 以上：CoolProp (IAPWS-IF97)
+        try:
+            return PropsSI('P', 'T', t_celsius + 273.15, 'Q', 1, 'H2O')
+        except:
+            pass
+
+    if t_celsius >= -40:
+        # -40°C 到 0°C: Wexler-Hyland (ASHRAE 标准)
+        T = t_celsius + 273.15
+        ln_p = (
+            -5800.2206 / T
+            + 1.3914993
+            - 0.048640239 * T
+            + 0.41764768e-4 * T**2
+            - 0.14452093e-7 * T**3
+            + 6.5459673 * math.log(T)
+        )
+        return math.exp(ln_p)
+    else:
+        # -60°C 到 -40°C: Goff-Gratch
+        T = t_celsius + 273.15
+        T0 = 373.15
+        log10_p = (
+            -7.90298 * (T0 / T - 1)
+            + 5.02808 * math.log10(T0 / T)
+            - 1.3816e-7 * (10 ** (11.344 * (1 - T / T0)) - 1)
+            + 8.1328e-3 * (10 ** (-3.49149 * (T0 / T - 1)) - 1)
+            + math.log10(101324.6)
+        )
+        return 10 ** log10_p
+
+
+def h_fg_water(t_celsius: float) -> float:
+    """
+    计算水的汽化潜热（kJ/kg）（支持 -60°C 到 +200°C）
+    """
+    if t_celsius >= 0:
+        # 0°C 以上：CoolProp
+        try:
+            h_l = PropsSI('H', 'T', t_celsius + 273.15, 'Q', 0, 'H2O') / 1000
+            h_g = PropsSI('H', 'T', t_celsius + 273.15, 'Q', 1, 'H2O') / 1000
+            return h_g - h_l
+        except:
+            pass
+    # 0°C 以下或 CoolProp 失败：简化公式
+    # h_fg ≈ 2500 - 2.36 * t (kJ/kg)
+    return 2500 - 2.36 * t_celsius
+
+
+def calc_power_for_turbine(
+    t_out: float,
+    t_in: float,
+    p_out_abs: float,
+    m_dot: float,
+    mix_composition: Dict,
+    composition_type: str,
+    mass_N2_frac: float,
+    mass_H2O_frac: float,
+    y_N2_in: float,
+    y_H2O_in: float,
+    M_N2: float,
+    M_H2O: float,
+    denom: float
+) -> Dict:
+    """
+    给定出口温度，计算涡轮轴功率（包含相变）
+    """
+    # 1. 饱和蒸气压
+    p_sat = p_sat_water(t_out)
+    p_sat_MPa = p_sat / 1e6
+
+    # 2. 冷凝量
+    y_H2O_max = p_sat_MPa / p_out_abs
+    liquid_frac = max(0, y_H2O_in - y_H2O_max)
+
+    # 3. 显热焓降
+    try:
+        Cp_N2 = PropsSI('Cpmass', 'T', t_out + 273.15, 'P', p_out_abs * 1e6, 'N2') / 1000
+        Cp_H2O = PropsSI('Cpmass', 'T', t_out + 273.15, 'P', p_out_abs * 1e6, 'H2O') / 1000
+    except:
+        Cp_N2 = 1.04
+        Cp_H2O = 2.0
+
+    sensible_h = mass_N2_frac * Cp_N2 * (t_in - t_out) + mass_H2O_frac * Cp_H2O * (t_in - t_out)
+
+    # 4. 潜热焓降
+    mass_condensed = liquid_frac * M_H2O / denom
+    if liquid_frac > 0.001:
+        h_fg = h_fg_water(t_out)
+        latent_h = mass_condensed * h_fg
+    else:
+        latent_h = 0
+
+    # 5. 总焓降和功率
+    delta_h = sensible_h + latent_h
+    P_calc = m_dot * delta_h
+
+    return {
+        't_out': t_out,
+        'p_sat': p_sat,
+        'liquid_frac': liquid_frac,
+        'sensible_h': sensible_h,
+        'latent_h': latent_h,
+        'delta_h': delta_h,
+        'P_calc': P_calc,
+    }
 
 def calculate_turbine(
     p_in_gauge: float, t_in: float, p_out_gauge: float,
@@ -135,87 +254,108 @@ def calculate_turbine(
                 liquid_warning = f'出口含液率 {liquid_percent:.1f}%，超过 5% 建议值！'
 
     elif medium_type == 'mix' and mix_composition and mix_composition.get('H2O', 0) > 0.005:
-        # 混合介质含水：需要相变潜热修正
+        # 混合介质含水：需要相变潜热修正（使用二分法）
 
-        # 先从无相变焓反推温度初值
-        try:
-            state_out_guess = MixProperty.get_state_ph(p_out_abs, h_out_no_phase, mix_composition, composition_type)
-            t_out_guess = state_out_guess['T'] - 273.15
-        except:
-            t_out_guess = 0  # 默认 0°C
+        # 计算质量分数和流量相关参数
+        M_N2 = 28.01
+        M_H2O = 18.02
+        y_N2_in = mix_composition.get('N2', 0)
+        y_H2O_in = mix_composition.get('H2O', 0)
+        denom = y_N2_in * M_N2 + y_H2O_in * M_H2O
+        mass_N2_frac = (y_N2_in * M_N2) / denom
+        mass_H2O_frac = (y_H2O_in * M_H2O) / denom
 
-        # 迭代求解能量平衡 + 相平衡（使用阻尼因子防止震荡）
-        q_cond = 0  # 初始化
-        damping = 0.3  # 阻尼因子，0.3 表示每次只更新 30%
-        t_out_prev = t_out_guess
-
-        for iteration in range(50):
-            # 温度边界检查（水的饱和温度计算范围 0.01-370°C）
-            t_out_clamped = max(0.01, min(370, t_out_guess))
-
-            # 1. 计算该温度下的饱和蒸气压
-            p_sat = get_water_saturation_pressure(t_out_clamped)  # MPa.A
-
-            # 2. 计算冷凝量
-            y_h2o_vapor_in = vapor_comp.get('H2O', 0) if vapor_comp else mix_composition.get('H2O', 0)
-            y_h2o_max = p_sat / p_out_abs if p_out_abs > 0 else 0
-
-            if y_h2o_vapor_in > y_h2o_max:
-                # 有冷凝
-                liquid_frac_new = y_h2o_vapor_in - y_h2o_max
-            else:
-                # 无冷凝（或蒸发）
-                liquid_frac_new = 0
-
-            # 3. 冷凝放热
-            if liquid_frac_new > 0.001:
-                h_fg = get_water_latent_heat(t_out_clamped)  # kJ/kg
-                q_cond = liquid_frac_new * h_fg
-            else:
-                q_cond = 0
-
-            # 4. 修正出口焓（冷凝放热增加系统焓）
-            h_out_corrected = h_out_no_phase + q_cond
-
-            # 5. 从修正焓反推温度
-            try:
-                state_new = MixProperty.get_state_ph(p_out_abs, h_out_corrected, mix_composition, composition_type)
-                t_out_new = state_new['T'] - 273.15
-            except:
-                t_out = t_out_clamped
-                break
-
-            # 6. 收敛判断
-            if abs(t_out_new - t_out_guess) < 0.1:
-                t_out = t_out_new
-                break
-
-            # 7. 阻尼更新（防止震荡）
-            if iteration > 0 and (t_out_new - t_out_guess) * (t_out_guess - t_out_prev) < 0:
-                # 检测到震荡，减小阻尼
-                damping *= 0.5
-
-            t_out_prev = t_out_guess
-            t_out_guess = t_out_guess + damping * (t_out_new - t_out_guess)
+        # 质量流量
+        if flow_unit == 'T/h':
+            m_dot = flow_rate * 1000 / 3600
+        elif flow_unit == 'Nm3/h':
+            rho_std = MixProperty.get_state(0.101325, 0, mix_composition, composition_type)['rho']
+            m_dot = flow_rate * rho_std / 3600
         else:
-            # 迭代 50 次未收敛，用当前值
-            t_out = t_out_guess
+            m_dot = flow_rate  # 默认
 
-        # 计算最终含液量
-        p_sat = get_water_saturation_pressure(t_out)
-        y_h2o_vapor_in = vapor_comp.get('H2O', 0) if vapor_comp else mix_composition.get('H2O', 0)
-        y_h2o_max = p_sat / p_out_abs if p_out_abs > 0 else 0
+        y_N2_in_vapor = vapor_comp.get('N2', 0) if vapor_comp else mix_composition.get('N2', 0)
+        y_H2O_in_vapor = vapor_comp.get('H2O', 0) if vapor_comp else mix_composition.get('H2O', 0)
 
-        if y_h2o_vapor_in > y_h2o_max:
-            liquid_frac_total = inlet_liquid_frac + (y_h2o_vapor_in - y_h2o_max)
-            liquid_percent = liquid_frac_total * 100
+        # 目标功率（无相变近似）
+        P_target = m_dot * (h_in - h_out_no_phase)
 
-            if liquid_percent > 5:
-                liquid_warning = f'出口含液率 {liquid_percent:.1f}%，超过 5% 建议值！'
+        # 二分法求解出口温度
+        t_min = -40.0  # 最低搜索温度
+        t_max = t_in   # 最高搜索温度
+        tolerance = 0.01  # 1% 功率误差容限
+        max_iter = 50
 
-        # 计算最终出口焓（用于功率计算）
-        h_out = h_out_no_phase + q_cond
-        x_out = None  # 混合物不计算干度
+        t_out_bisection = None
+        liquid_frac_bisection = 0.0
+        P_calc_bisection = 0.0
+        delta_h_bisection = 0.0
+
+        for iteration in range(max_iter):
+            t_mid = (t_min + t_max) / 2
+            result = calc_power_for_turbine(
+                t_out=t_mid,
+                t_in=t_in,
+                p_out_abs=p_out_abs,
+                m_dot=m_dot,
+                mix_composition=mix_composition,
+                composition_type=composition_type,
+                mass_N2_frac=mass_N2_frac,
+                mass_H2O_frac=mass_H2O_frac,
+                y_N2_in=y_N2_in_vapor,
+                y_H2O_in=y_H2O_in_vapor,
+                M_N2=M_N2,
+                M_H2O=M_H2O,
+                denom=denom
+            )
+            P_calc = result['P_calc']
+            error = P_calc - P_target
+
+            if abs(error) / abs(P_target) < tolerance:
+                t_out_bisection = t_mid
+                liquid_frac_bisection = result['liquid_frac']
+                P_calc_bisection = P_calc
+                delta_h_bisection = result['delta_h']
+                break
+
+            if error > 0:
+                # P_calc > P_target，焓降太大，温度太高
+                t_min = t_mid
+            else:
+                # P_calc < P_target，焓降太小，温度太低
+                t_max = t_mid
+        else:
+            # 未收敛，使用当前值
+            t_out_bisection = (t_min + t_max) / 2
+            result = calc_power_for_turbine(
+                t_out=t_out_bisection,
+                t_in=t_in,
+                p_out_abs=p_out_abs,
+                m_dot=m_dot,
+                mix_composition=mix_composition,
+                composition_type=composition_type,
+                mass_N2_frac=mass_N2_frac,
+                mass_H2O_frac=mass_H2O_frac,
+                y_N2_in=y_N2_in_vapor,
+                y_H2O_in=y_H2O_in_vapor,
+                M_N2=M_N2,
+                M_H2O=M_H2O,
+                denom=denom
+            )
+            liquid_frac_bisection = result['liquid_frac']
+            P_calc_bisection = result['P_calc']
+            delta_h_bisection = result['delta_h']
+
+        t_out = t_out_bisection
+        liquid_frac_total = inlet_liquid_frac + liquid_frac_bisection
+        liquid_percent = liquid_frac_total * 100
+
+        if liquid_percent > 5:
+            liquid_warning = f'出口含液率 {liquid_percent:.1f}%，超过 5% 建议值！'
+
+        # 出口焓（用于功率计算）
+        h_out = h_in - delta_h_bisection
+        x_out = None
 
     else:
         # 不含水或单一气体：无相变
@@ -272,22 +412,28 @@ if __name__ == '__main__':
     r = calculate_turbine(0.5, 200, 0.1, 1.0, 'T/h', 85, 'single', 'H2O')
     print(f"   Shaft: {r['power_shaft']:.2f} kW, Electric: {r['power_electric']:.2f} kW")
     print(f"   T_out: {r['t_out']:.2f} C, x_out: {r['x_out']}")
-    
+
     print("\n2. N2 Turbine (0.5 MPa.G, 200C -> 0.1 MPa.G, eta=85%, 1000 Nm3/h):")
     r = calculate_turbine(0.5, 200, 0.1, 1000, 'Nm3/h', 85, 'single', 'N2')
     print(f"   Shaft: {r['power_shaft']:.2f} kW, Electric: {r['power_electric']:.2f} kW")
     print(f"   T_out: {r['t_out']:.2f} C")
-    
+
     print("\n3. Mix Turbine - Air (0.5 MPa.G, 200C -> 0.1 MPa.G, eta=85%, 1000 Nm3/h):")
-    r = calculate_turbine(0.5, 200, 0.1, 1000, 'Nm3/h', 85, 'mix', 
+    r = calculate_turbine(0.5, 200, 0.1, 1000, 'Nm3/h', 85, 'mix',
                           mix_composition={'N2': 79, 'O2': 21}, composition_type='mole')
     print(f"   Shaft: {r['power_shaft']:.2f} kW, Electric: {r['power_electric']:.2f} kW")
     print(f"   T_out: {r['t_out']:.2f} C")
-    
+
     print("\n4. Mix Turbine - Custom (0.5 MPa.G, 200C -> 0.1 MPa.G, eta=85%, 1000 Nm3/h):")
     r = calculate_turbine(0.5, 200, 0.1, 1000, 'Nm3/h', 85, 'mix',
                           mix_composition={'N2': 90, 'CO2': 10}, composition_type='mole')
     print(f"   Shaft: {r['power_shaft']:.2f} kW, Electric: {r['power_electric']:.2f} kW")
     print(f"   T_out: {r['t_out']:.2f} C")
-    
+
+    print("\n5. Mix Turbine - N2+H2O with phase change (0.25 MPa.G, 40C -> 0.01 MPa.G, eta=85%, 10000 Nm3/h):")
+    r = calculate_turbine(0.25, 40, 0.01, 10000, 'Nm3/h', 85, 'mix',
+                          mix_composition={'N2': 0.98, 'H2O': 0.02}, composition_type='mole')
+    print(f"   Shaft: {r['power_shaft']:.2f} kW, Electric: {r['power_electric']:.2f} kW")
+    print(f"   T_out: {r['t_out']:.2f} C, Liquid: {r['liquid_percent']:.2f}%")
+
     print("\n[OK] Turbine test passed!")
