@@ -72,8 +72,22 @@ class Mode2Request(BaseModel):
     hx_cold_out: Dict = {'p_out': 0.1, 't_out': 100}
     hx_hot: FluidParams
 
+class Mode3TurbineIn(BaseModel):
+    """Mode 3 turbine inlet parameters (simplified, no p_out required)"""
+    medium_type: str
+    medium: Optional[str] = None
+    mix_composition: Optional[Dict[str, float]] = None
+    composition_type: str = 'mole'
+    flow_rate: float
+    flow_unit: str
+    p_in: float
+    t_in: float
+    # Optional valve parameters
+    valve_dp: Optional[float] = 30
+    valve_type: Optional[str] = 'butterfly'
+
 class Mode3Request(BaseModel):
-    turbine_in: FluidParams
+    turbine_in: Mode3TurbineIn
     turbine_params: TurbineParams
 
 # ============ API 接口 ============
@@ -133,8 +147,8 @@ def calculate_mode1(req: Mode1Request):
             req.cold_side.mix_composition, req.cold_side.composition_type,
         )
         # 阀门参数（从 cold_side 中读取，新增 valve_dp 和 valve_type）
-        valve_dp = req.cold_side.get('valve_dp', 30)  # kPa
-        valve_type = req.cold_side.get('valve_type', 'butterfly')
+        valve_dp = getattr(req.cold_side, 'valve_dp', 30)  # kPa
+        valve_type = getattr(req.cold_side, 'valve_type', 'butterfly')
         valve = select_valve(
             req.cold_side.flow_rate, req.cold_side.flow_unit,
             state_in['rho'], pipe_in['recommended_dn'],
