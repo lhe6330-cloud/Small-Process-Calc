@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: pds-calc-backend
+    restart: unless-stopped
+    expose:
+      - "8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./backend/app:/app/app
+    networks:
+      - pds-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_BASE_URL=http://localhost:8000
+    container_name: pds-calc-frontend
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+    networks:
+      - pds-network
+
+networks:
+  pds-network:
+    driver: bridge

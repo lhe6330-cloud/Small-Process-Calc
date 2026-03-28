@@ -465,7 +465,8 @@ def calculate_turbine(
             x_out = None
 
         # 无相变时，显热功率=总功率，潜热功率=0
-        sensible_power = power_shaft
+        # 注意：power_shaft 在步骤 5 计算，这里先初始化
+        sensible_power = 0
         latent_power = 0
 
     # ============ 步骤 5: 质量流量和功率计算 ============
