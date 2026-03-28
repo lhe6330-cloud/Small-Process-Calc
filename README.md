@@ -47,25 +47,39 @@ Small-Process-Calc/
 
 ## 启动方式
 
-### 后端（端口 8000）
+### 本地开发
+
+#### 后端（端口 8000）
 
 ```bash
 cd backend
 python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-或直接运行 `run.bat`
-
 API 文档：http://localhost:8000/docs
 
-### 前端（端口 3000）
+#### 前端（端口 3000）
 
 ```bash
 cd frontend
+npm install
 npm run dev
 ```
 
 访问：http://localhost:3000
+
+### 云服务器部署（推荐）
+
+使用 Docker Compose 一键部署：
+
+```bash
+docker-compose up -d
+```
+
+- 前端访问：http://your-server-ip:8080
+- 后端 API: http://your-server-ip:8000
+
+详细部署说明请查看 [DEPLOYMENT.md](DEPLOYMENT.md)
 
 ## 计算模式
 
