@@ -70,7 +70,7 @@
 
 <script setup>
 import { reactive, ref, onMounted } from 'vue'
-import axios from 'axios'
+import api from '../../api.js'
 import MixCompositionInput from '../common/MixCompositionInput.vue'
 
 const emit = defineEmits(['calculate'])
@@ -125,8 +125,8 @@ const submit = async () => {
     try {
       // 调用后端 API 获取饱和温度
       const p_abs = form.turbine_in.p_in + 0.101325  // MPa.G → MPa.A
-      const satRes = await axios.get('http://localhost:8000/api/thermo/water/saturation', { params: { p: p_abs } })
-      const t_sat = satRes.data.saturation_temp
+      const satRes = await api.get('/thermo/water/saturation', { params: { p: p_abs } })
+      const t_sat = satRes.saturation_temp
 
       if (form.turbine_in.t_in <= t_sat) {
         alert(`⚠️ 涡轮入口温度过低！\n\n当前温度：${form.turbine_in.t_in}°C\n饱和温度：${t_sat.toFixed(2)}°C\n\n请确保入口为过热蒸汽状态（入口温度需高于饱和温度）。`)
@@ -172,11 +172,14 @@ const submit = async () => {
     localStorage.setItem('lastInputData_mode3', JSON.stringify(inputData))
     localStorage.setItem('mode3_input', JSON.stringify(inputData)) // 持久化输入数据
 
-    const res = await axios.post('/api/calculate/mode3', inputData)
+    console.log('[Mode3] Sending API request to /api/calculate/mode3')
+    const res = await api.post('/calculate/mode3', inputData)
+
+    console.log('[Mode3] API response:', res)
 
     // 检查后端返回的错误
-    if (res.data.error || !res.data.success) {
-      alert('⚠️ 计算失败：\n\n' + (res.data.error_message || '请检查输入参数是否合理'))
+    if (res?.error || !res?.success) {
+      alert('⚠️ 计算失败：\n\n' + (res?.error_message || '请检查输入参数是否合理'))
       loading.value = false
       return
     }
@@ -187,14 +190,19 @@ const submit = async () => {
       turbine: {
         ...inputData.turbine_in,  // 涡轮入口参数
         p_out: inputData.turbine_params.p_out,  // 涡轮出口压力
-        ...res.data.turbine  // 合并后端返回的涡轮计算结果
+        ...res  // 合并后端返回的涡轮计算结果
       }
     }
     localStorage.setItem('lastInputData_mode3', JSON.stringify(fullResultData))
 
-    emit('calculate', res.data)
+    emit('calculate', res)
   } catch (e) {
-    alert('计算失败：' + e.message)
+    console.error('[Mode3] Calculation error:', e)
+    const errorMsg = e?.userMessage || e?.message || '未知错误'
+    emit('calculate', {
+      error: true,
+      error_message: errorMsg + ' (详情请在浏览器控制台查看 F12)'
+    })
   } finally {
     loading.value = false
   }

@@ -149,7 +149,7 @@
 
 <script setup>
 import { reactive, ref, onMounted } from 'vue'
-import axios from 'axios'
+import api from '../../api.js'
 import MixCompositionInput from '../common/MixCompositionInput.vue'
 
 const emit = defineEmits(['calculate'])
@@ -263,6 +263,12 @@ const submit = async () => {
   }
 
   loading.value = true
+  console.log('[Mode1] Submitting calculation with data:', JSON.stringify({
+    cold_side: form.cold,
+    hot_side: form.hot,
+    turbine: form.turbine
+  }))
+
   try {
     // 构建请求数据
     const coldData = form.cold.medium_type === 'single'
@@ -315,34 +321,41 @@ const submit = async () => {
       turbine: { ...form.turbine }
     }
 
+    console.log('[Mode1] Sending API request to /api/calculate/mode1')
+
     // 保存输入数据到 localStorage 供导出使用和持久化
+    localStorage.setItem('mode1_input', JSON.stringify(inputData))
     localStorage.setItem('lastInputData', JSON.stringify(inputData))
     localStorage.setItem('lastInputData_mode1', JSON.stringify(inputData))
-    localStorage.setItem('mode1_input', JSON.stringify(inputData)) // 持久化输入数据
 
-    const res = await axios.post('/api/calculate/mode1', inputData)
+    // 使用 api 实例发送请求
+    const res = await api.post('/calculate/mode1', inputData)
+
+    console.log('[Mode1] API response:', res)
 
     // 保存完整的计算结果（输入 + 输出）供其他模块使用
     const fullResultData = {
       ...inputData,
       turbine: {
         ...inputData.turbine,
-        ...res.data.turbine  // 合并后端返回的涡轮计算结果
+        ...res  // 合并后端返回的涡轮计算结果
       }
     }
     localStorage.setItem('lastInputData_mode1', JSON.stringify(fullResultData))
 
     // 处理后端返回的错误
-    if (res.data.error) {
-      emit('calculate', res.data)  // 传递错误信息给 ResultPanel 显示
+    if (res?.error) {
+      emit('calculate', res)
     } else {
-      emit('calculate', res.data)
+      emit('calculate', res)
     }
   } catch (e) {
+    console.error('[Mode1] Calculation error:', e)
     // 网络错误或其他异常
+    const errorMsg = e?.userMessage || e?.message || '网络错误或服务器无响应，请稍后重试。'
     emit('calculate', {
       error: true,
-      error_message: '网络错误或服务器无响应，请稍后重试。'
+      error_message: errorMsg + ' (详情请在浏览器控制台查看 F12)'
     })
   } finally {
     loading.value = false
