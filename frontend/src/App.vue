@@ -68,13 +68,109 @@ body { font-family: 'Microsoft YaHei', sans-serif; background: #ffffff; color: #
 .header { background: #f5f7fa; padding: 20px; text-align: center; border-bottom: 2px solid #dcdfe6; }
 .header h1 { color: #303133; font-size: 28px; }
 .subtitle { color: #666; font-size: 14px; }
-.main { padding: 20px; max-width: 1400px; margin: 0 auto; }
-.content { margin-top: 20px; }
+.main { padding: 15px; max-width: 1400px; margin: 0 auto; }
+.content { margin-top: 15px; }
 :deep(.el-tabs) { --el-bg-color: #ffffff; --el-text-color-primary: #303133; }
 :deep(.el-tabs__item) { color: #666; border: 1px solid #dcdfe6; background: #f5f7fa; }
 :deep(.el-tabs__item.is-active) { color: #409EFF; border-color: #409EFF; background: #ffffff; }
-:deep(.el-form-item__label) { color: #303133; }
+:deep(.el-form-item__label) { color: #303133; font-size: 13px; }
 :deep(.el-input__wrapper) { background: #ffffff; border-color: #dcdfe6; }
 :deep(.el-input__inner) { color: #303133; }
 :deep(.el-button--primary) { background: #409EFF; border-color: #409EFF; }
+
+/* ========== 紧凑布局样式 - 模式 1/2/3 ========== */
+/* 卡片间距缩小 */
+.mode-form-card { margin-bottom: 15px; background: #ffffff; border: 1px solid #dcdfe6; }
+.mode-form-card :deep(.el-card__header) { padding: 10px 15px; background: #f5f7fa; border-bottom: 1px solid #dcdfe6; }
+.mode-form-card :deep(.el-card__body) { padding: 12px; }
+.mode-form-card .card-title { color: #303133; font-weight: bold; font-size: 14px; }
+
+/* 表单行紧凑布局 */
+.mode-form-row { display: flex; align-items: center; gap: 12px; margin-bottom: 9px; flex-wrap: wrap; }
+.mode-form-row.nowrap { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 9px; border-bottom: 1px solid #ebeef5; }
+.mode-form-group { display: flex; align-items: center; gap: 8px; }
+.mode-form-label { color: #606266; font-size: 13px; width: 70px; text-align: right; }
+.mode-form-label.short { width: 50px; }
+
+/* 输入框/下拉框尺寸 - 缩小到 2/3 */
+.mode-input-sm { width: 70px; height: 28px; font-size: 13px; }
+.mode-input-md { width: 80px; height: 28px; font-size: 13px; }
+.mode-input-lg { width: 100px; height: 28px; font-size: 13px; }
+.mode-select-sm { width: 90px; height: 28px; font-size: 13px; }
+.mode-select-md { width: 100px; height: 28px; font-size: 13px; }
+.mode-unit-text { color: #909399; font-size: 13px; min-width: 45px; }
+
+/* 混合介质紧凑输入样式 */
+.mode-mix-row { display: flex; align-items: center; gap: 8px; }
+.mode-mix-item { display: flex; align-items: center; gap: 4px; }
+.mode-mix-item input {
+  width: 45px; height: 28px; font-size: 13px; padding: 4px 6px;
+  border: 1px solid #dcdfe6; border-radius: 4px; text-align: center;
+}
+.mode-mix-item input::-webkit-outer-spin-button,
+.mode-mix-item input::-webkit-inner-spin-button {
+  -webkit-appearance: none; margin: 0;
+}
+.mode-mix-item input[type=number] { -moz-appearance: textfield; }
+.mode-mix-item span { color: #606266; font-size: 13px; min-width: 30px; }
+.mode-mix-item .percent { color: #909399; font-size: 13px; min-width: 12px; }
+.mode-mix-footer { display: flex; align-items: center; gap: 8px; margin-left: 10px; }
+.mode-total-label { color: #606266; font-size: 13px; white-space: nowrap; }
+.mode-total-value { font-weight: bold; font-size: 13px; color: #303133; min-width: 45px; }
+.mode-normalize-btn {
+  background: #409EFF; color: #fff; border: none;
+  padding: 5px 10px; border-radius: 4px; font-size: 12px;
+  cursor: pointer; height: 28px; white-space: nowrap;
+}
+.mode-normalize-btn:disabled { background: #a0cfff; cursor: not-allowed; }
+
+/* 分隔线 */
+.mode-divider { width: 1px; height: 24px; background: #dcdfe6; margin: 0 8px; }
+
+/* 组分类型单选 */
+.mode-radio-label {
+  display: inline-flex; align-items: center; gap: 3px;
+  cursor: pointer; color: #606266; font-size: 12px; white-space: nowrap;
+}
+.mode-radio-label input[type="radio"] {
+  cursor: pointer; width: 14px; height: 14px; accent-color: #409EFF;
+}
+
+/* 计算按钮 */
+.mode-calc-btn {
+  background: #409EFF; color: #fff; border: none;
+  padding: 10px 40px; border-radius: 4px; font-size: 14px;
+  cursor: pointer; margin-top: 15px; height: 36px;
+}
+
+/* ========== 紧凑布局样式 - 管道/阀门/分离器/涡轮 ========== */
+.tool-form-card { margin-bottom: 15px; background: #ffffff; border: 1px solid #dcdfe6; }
+.tool-form-card :deep(.el-card__header) { padding: 10px 15px; background: #f5f7fa; border-bottom: 1px solid #dcdfe6; }
+.tool-form-card :deep(.el-card__body) { padding: 12px; }
+.tool-item { margin-bottom: 15px; }
+.tool-card-header { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.tool-card-title { font-weight: 600; color: #303133; font-size: 14px; }
+
+/* el-form 紧凑化 */
+.tool-form :deep(.el-form-item__label) { font-size: 13px; }
+.tool-form :deep(.el-form-item) { margin-bottom: 12px; }
+.tool-form :deep(.el-input-number) { width: 120px; font-size: 13px; }
+.tool-form :deep(.el-select) { width: 120px; font-size: 13px; }
+.tool-form :deep(.el-radio-group) { display: flex; gap: 10px; }
+
+/* el-descriptions 紧凑化 */
+.tool-descriptions :deep(.el-descriptions__label) { font-size: 12px; padding: 8px 12px; }
+.tool-descriptions :deep(.el-descriptions__content) { font-size: 13px; padding: 8px 12px; }
+
+/* el-divider 紧凑化 */
+.tool-divider { margin: 10px 0; }
+.tool-divider :deep(.el-divider__text) { font-size: 13px; font-weight: 600; color: #303133; }
+
+/* 按钮紧凑化 */
+.tool-btn { padding: 8px 15px; font-size: 13px; height: 32px; }
+.tool-btn :deep(.el-button--small) { padding: 5px 10px; font-size: 12px; height: 28px; }
+
+/* 标题和描述 */
+.tool-title { color: #303133; margin-bottom: 8px; font-size: 20px; }
+.tool-description { color: #666; margin-bottom: 15px; font-size: 13px; }
 </style>

@@ -1,19 +1,23 @@
 <template>
-  <el-form :model="form" label-width="120px" size="default">
-    <el-card class="form-card">
+  <div class="mode-form-container">
+    <!-- 换热器冷边卡片 -->
+    <el-card class="mode-form-card">
       <template #header><span class="card-title">🔥 换热器冷边</span></template>
-      <el-row :gutter="20">
-        <el-col :span="8">
-          <el-form-item label="介质类型">
-            <el-select v-model="form.cold.medium_type" placeholder="选择" @change="onMediumTypeChange('cold')">
+      <div class="card-body">
+        <!-- 单一介质时：显示介质类型 + 介质；混合介质时：显示介质类型 + 组分类型 + 5 组分 + 合计 + 归一化 -->
+        <div class="mode-form-row">
+          <div class="mode-form-group">
+            <label class="mode-form-label">介质类型</label>
+            <el-select v-model="form.cold.medium_type" placeholder="选择" @change="onMediumTypeChange('cold')" class="mode-select-md">
               <el-option label="单一介质" value="single" />
               <el-option label="混合介质" value="mix" />
             </el-select>
-          </el-form-item>
-        </el-col>
-        <el-col :span="8" v-if="form.cold.medium_type === 'single'">
-          <el-form-item label="介质">
-            <el-select v-model="form.cold.medium" @change="onMediumChange('cold')">
+          </div>
+
+          <!-- 单一介质时显示介质选择 -->
+          <div class="mode-form-group" v-if="form.cold.medium_type === 'single'">
+            <label class="mode-form-label short">介质</label>
+            <el-select v-model="form.cold.medium" @change="onMediumChange('cold')" class="mode-select-md">
               <el-option label="氮气 (N₂)" value="N2" />
               <el-option label="氧气 (O₂)" value="O2" />
               <el-option label="空气" value="Air" />
@@ -21,64 +25,90 @@
               <el-option label="氢气" value="H2" />
               <el-option label="水/水蒸气" value="H2O" />
             </el-select>
-          </el-form-item>
-        </el-col>
-        <el-col :span="8">
-          <el-form-item label="流量">
-            <el-input-number v-model="form.cold.flow_rate" :min="0" :step="100" />
-            <el-select v-model="form.cold.flow_unit" style="width: 100px; margin-left: 10px;">
+          </div>
+
+          <!-- 混合介质时显示组分类型 + 5 组分 + 合计 + 归一化 -->
+          <div class="mode-form-group" v-if="form.cold.medium_type === 'mix'">
+            <div class="mode-divider"></div>
+            <div class="mode-form-group">
+              <span class="mode-form-label" style="width: auto; font-size: 12px;">组分类型：</span>
+              <label class="mode-radio-label">
+                <input type="radio" v-model="form.cold.mixData.composition_type" value="mole" />
+                <span>摩尔</span>
+              </label>
+              <label class="mode-radio-label">
+                <input type="radio" v-model="form.cold.mixData.composition_type" value="mass" />
+                <span>质量</span>
+              </label>
+            </div>
+            <div class="mode-divider"></div>
+            <div class="mode-mix-row">
+              <div class="mode-mix-item" v-for="(value, key) in form.cold.mixData.composition" :key="key">
+                <input type="number" v-model.number="form.cold.mixData.composition[key]" :step="key === 'H2O' || key === 'CO2' ? 0.1 : 1" />
+                <span>{{ getMediumLabel(key) }}</span>
+                <span class="percent">%</span>
+              </div>
+            </div>
+            <div class="mode-mix-footer">
+              <span class="mode-total-label">合计：</span>
+              <span class="mode-total-value" :style="{ color: totalCold !== 100 ? '#f59e0b' : '#22c55e' }">{{ totalCold.toFixed(1) }}%</span>
+              <button class="mode-normalize-btn" @click="normalizeCold" :disabled="totalCold === 0 || Math.abs(totalCold - 100) < 0.01">🔄</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 第二行：流量、压力、温度 -->
+        <div class="mode-form-row">
+          <div class="mode-form-group">
+            <label class="mode-form-label short">流量</label>
+            <el-input v-model.number="form.cold.flow_rate" type="number" class="mode-input-md" />
+            <el-select v-model="form.cold.flow_unit" class="mode-select-sm">
               <el-option label="T/h" value="T/h" />
               <el-option label="Nm³/h" value="Nm3/h" />
             </el-select>
-          </el-form-item>
-        </el-col>
-      </el-row>
-
-      <!-- 混合介质组分输入 -->
-      <div v-if="form.cold.medium_type === 'mix'">
-        <MixCompositionInput
-          v-model="form.cold.mixData"
-        />
+          </div>
+          <div class="mode-form-group">
+            <label class="mode-form-label">入口压力</label>
+            <el-input v-model.number="form.cold.p_in" type="number" step="0.1" class="mode-input-md" />
+            <span class="mode-unit-text">MPa.G</span>
+          </div>
+          <div class="mode-form-group">
+            <label class="mode-form-label">出口压力</label>
+            <el-input v-model.number="form.cold.p_out" type="number" step="0.1" class="mode-input-md" />
+            <span class="mode-unit-text">MPa.G</span>
+          </div>
+          <div class="mode-form-group">
+            <label class="mode-form-label">入口温度</label>
+            <el-input v-model.number="form.cold.t_in" type="number" step="1" class="mode-input-md" />
+            <span class="mode-unit-text">°C</span>
+          </div>
+          <div class="mode-form-group">
+            <label class="mode-form-label">出口温度</label>
+            <el-input v-model.number="form.cold.t_out" type="number" step="1" class="mode-input-md" />
+            <span class="mode-unit-text">°C</span>
+          </div>
+        </div>
       </div>
-
-      <el-row :gutter="20">
-        <el-col :span="6">
-          <el-form-item label="入口压力 (MPa.G)">
-            <el-input-number v-model="form.cold.p_in" :min="-0.1" :step="0.1" />
-          </el-form-item>
-        </el-col>
-        <el-col :span="6">
-          <el-form-item label="出口压力 (MPa.G)">
-            <el-input-number v-model="form.cold.p_out" :min="-0.1" :step="0.1" />
-          </el-form-item>
-        </el-col>
-        <el-col :span="6">
-          <el-form-item label="入口温度 (°C)">
-            <el-input-number v-model="form.cold.t_in" :min="-273" :step="10" />
-          </el-form-item>
-        </el-col>
-        <el-col :span="6">
-          <el-form-item label="出口温度 (°C)">
-            <el-input-number v-model="form.cold.t_out" :min="-273" :step="10" />
-          </el-form-item>
-        </el-col>
-      </el-row>
     </el-card>
 
-    <el-card class="form-card">
+    <!-- 换热器热边卡片 -->
+    <el-card class="mode-form-card">
       <template #header><span class="card-title">🔥 换热器热边</span></template>
-      <el-row :gutter="20">
-        <el-col :span="8">
-          <el-form-item label="介质类型">
-            <el-select v-model="form.hot.medium_type" placeholder="选择" @change="onMediumTypeChange('hot')">
+      <div class="card-body">
+        <!-- 单一介质时：显示介质类型 + 介质；混合介质时：显示介质类型 + 组分类型 + 5 组分 + 合计 + 归一化 -->
+        <div class="mode-form-row">
+          <div class="mode-form-group">
+            <label class="mode-form-label">介质类型</label>
+            <el-select v-model="form.hot.medium_type" placeholder="选择" @change="onMediumTypeChange('hot')" class="mode-select-md">
               <el-option label="单一介质" value="single" />
               <el-option label="混合介质" value="mix" />
             </el-select>
-          </el-form-item>
-        </el-col>
-        <el-col :span="8" v-if="form.hot.medium_type === 'single'">
-          <el-form-item label="介质">
-            <el-select v-model="form.hot.medium" @change="onMediumChange('hot')">
+          </div>
+
+          <!-- 单一介质时显示介质选择 -->
+          <div class="mode-form-group" v-if="form.hot.medium_type === 'single'">
+            <label class="mode-form-label short">介质</label>
+            <el-select v-model="form.hot.medium" @change="onMediumChange('hot')" class="mode-select-md">
               <el-option label="氮气 (N₂)" value="N2" />
               <el-option label="氧气 (O₂)" value="O2" />
               <el-option label="空气" value="Air" />
@@ -86,71 +116,96 @@
               <el-option label="氢气" value="H2" />
               <el-option label="水/水蒸气" value="H2O" />
             </el-select>
-          </el-form-item>
-        </el-col>
-        <el-col :span="8">
-          <el-form-item label="流量">
-            <el-input-number v-model="form.hot.flow_rate" :min="0" :step="0.1" />
-            <el-select v-model="form.hot.flow_unit" style="width: 100px; margin-left: 10px;">
+          </div>
+
+          <!-- 混合介质时显示组分类型 + 5 组分 + 合计 + 归一化 -->
+          <div class="mode-form-group" v-if="form.hot.medium_type === 'mix'">
+            <div class="mode-divider"></div>
+            <div class="mode-form-group">
+              <span class="mode-form-label" style="width: auto; font-size: 12px;">组分类型：</span>
+              <label class="mode-radio-label">
+                <input type="radio" v-model="form.hot.mixData.composition_type" value="mole" />
+                <span>摩尔</span>
+              </label>
+              <label class="mode-radio-label">
+                <input type="radio" v-model="form.hot.mixData.composition_type" value="mass" />
+                <span>质量</span>
+              </label>
+            </div>
+            <div class="mode-divider"></div>
+            <div class="mode-mix-row">
+              <div class="mode-mix-item" v-for="(value, key) in form.hot.mixData.composition" :key="key">
+                <input type="number" v-model.number="form.hot.mixData.composition[key]" :step="key === 'H2O' || key === 'CO2' ? 0.1 : 1" />
+                <span>{{ getMediumLabel(key) }}</span>
+                <span class="percent">%</span>
+              </div>
+            </div>
+            <div class="mode-mix-footer">
+              <span class="mode-total-label">合计：</span>
+              <span class="mode-total-value" :style="{ color: totalHot !== 100 ? '#f59e0b' : '#22c55e' }">{{ totalHot.toFixed(1) }}%</span>
+              <button class="mode-normalize-btn" @click="normalizeHot" :disabled="totalHot === 0 || Math.abs(totalHot - 100) < 0.01">🔄</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 第二行：流量、压力、温度 -->
+        <div class="mode-form-row">
+          <div class="mode-form-group">
+            <label class="mode-form-label short">流量</label>
+            <el-input v-model.number="form.hot.flow_rate" type="number" class="mode-input-md" />
+            <el-select v-model="form.hot.flow_unit" class="mode-select-sm">
               <el-option label="T/h" value="T/h" />
               <el-option label="Nm³/h" value="Nm3/h" />
             </el-select>
-          </el-form-item>
-        </el-col>
-      </el-row>
-
-      <!-- 混合介质组分输入 -->
-      <div v-if="form.hot.medium_type === 'mix'">
-        <MixCompositionInput
-          v-model="form.hot.mixData"
-        />
+          </div>
+          <div class="mode-form-group">
+            <label class="mode-form-label">入口压力</label>
+            <el-input v-model.number="form.hot.p_in" type="number" step="0.1" class="mode-input-md" />
+            <span class="mode-unit-text">MPa.G</span>
+          </div>
+          <div class="mode-form-group">
+            <label class="mode-form-label">出口压力</label>
+            <el-input v-model.number="form.hot.p_out" type="number" step="0.1" class="mode-input-md" />
+            <span class="mode-unit-text">MPa.G</span>
+          </div>
+          <div class="mode-form-group">
+            <label class="mode-form-label">入口温度</label>
+            <el-input v-model.number="form.hot.t_in" type="number" step="1" class="mode-input-md" />
+            <span class="mode-unit-text">°C</span>
+          </div>
+        </div>
       </div>
-
-      <el-row :gutter="20">
-        <el-col :span="6">
-          <el-form-item label="入口压力 (MPa.G)">
-            <el-input-number v-model="form.hot.p_in" :min="-0.1" :step="0.1" />
-          </el-form-item>
-        </el-col>
-        <el-col :span="6">
-          <el-form-item label="出口压力 (MPa.G)">
-            <el-input-number v-model="form.hot.p_out" :min="-0.1" :step="0.1" />
-          </el-form-item>
-        </el-col>
-        <el-col :span="6">
-          <el-form-item label="入口温度 (°C)">
-            <el-input-number v-model="form.hot.t_in" :min="-273" :step="10" />
-          </el-form-item>
-        </el-col>
-      </el-row>
     </el-card>
 
-    <el-card class="form-card">
+    <!-- 涡轮发电机组卡片 -->
+    <el-card class="mode-form-card">
       <template #header><span class="card-title">⚡ 涡轮发电机组</span></template>
-      <el-row :gutter="20">
-        <el-col :span="8">
-          <el-form-item label="出口压力 (MPa.G)">
-            <el-input-number v-model="form.turbine.p_out" :min="-0.1" :step="0.1" />
-          </el-form-item>
-        </el-col>
-        <el-col :span="8">
-          <el-form-item label="绝热效率 (%)">
-            <el-input-number v-model="form.turbine.adiabatic_efficiency" :min="0" :max="100" :step="1" />
-          </el-form-item>
-        </el-col>
-      </el-row>
+      <div class="card-body">
+        <div class="mode-form-row">
+          <div class="mode-form-group">
+            <label class="mode-form-label">出口压力</label>
+            <el-input v-model.number="form.turbine.p_out" type="number" step="0.1" class="mode-input-md" />
+            <span class="mode-unit-text">MPa.G</span>
+          </div>
+          <div class="mode-form-group">
+            <label class="mode-form-label">绝热效率</label>
+            <el-input v-model.number="form.turbine.adiabatic_efficiency" type="number" step="1" class="mode-input-md" />
+            <span class="mode-unit-text">%</span>
+          </div>
+        </div>
+      </div>
     </el-card>
 
-    <el-button type="primary" size="large" @click="submit" :loading="loading" style="margin-top: 20px; width: 200px;">
+    <!-- 计算按钮 -->
+    <button class="mode-calc-btn" @click="submit" :disabled="loading">
       🚀 开始计算
-    </el-button>
-  </el-form>
+    </button>
+  </div>
 </template>
 
 <script setup>
-import { reactive, ref, onMounted } from 'vue'
+import { reactive, ref, computed, onMounted } from 'vue'
 import api from '../../api.js'
-import MixCompositionInput from '../common/MixCompositionInput.vue'
 
 const emit = defineEmits(['calculate'])
 const loading = ref(false)
@@ -180,51 +235,41 @@ const form = reactive({
   turbine: { p_out: 0.1, adiabatic_efficiency: 85 }
 })
 
-// 组件挂载时从 localStorage 读取数据
-onMounted(() => {
-  const storedData = localStorage.getItem('mode1_input')
-  if (storedData) {
-    try {
-      const parsed = JSON.parse(storedData)
-      // 恢复冷边数据
-      if (parsed.cold_side) {
-        const cold = parsed.cold_side
-        form.cold.medium_type = cold.medium_type || 'single'
-        form.cold.medium = cold.medium || 'N2'
-        form.cold.flow_rate = cold.flow_rate || 1000
-        form.cold.flow_unit = cold.flow_unit || 'Nm3/h'
-        form.cold.p_in = cold.p_in || 0.5
-        form.cold.p_out = cold.p_out || 0.48
-        form.cold.t_in = cold.t_in || 20
-        form.cold.t_out = cold.t_out || 200
-        if (cold.mix_composition) {
-          form.cold.mixData = { composition: cold.mix_composition, composition_type: cold.composition_type || 'mole' }
-        }
-      }
-      // 恢复热边数据
-      if (parsed.hot_side) {
-        const hot = parsed.hot_side
-        form.hot.medium_type = hot.medium_type || 'single'
-        form.hot.medium = hot.medium || 'H2O'
-        form.hot.flow_rate = hot.flow_rate || 0.5
-        form.hot.flow_unit = hot.flow_unit || 'T/h'
-        form.hot.p_in = hot.p_in || 0.6
-        form.hot.p_out = hot.p_out || 0.55
-        form.hot.t_in = hot.t_in || 250
-        if (hot.mix_composition) {
-          form.hot.mixData = { composition: hot.mix_composition, composition_type: hot.composition_type || 'mole' }
-        }
-      }
-      // 恢复涡轮数据
-      if (parsed.turbine) {
-        form.turbine.p_out = parsed.turbine.p_out || 0.1
-        form.turbine.adiabatic_efficiency = parsed.turbine.adiabatic_efficiency || 85
-      }
-    } catch (e) {
-      console.error('读取历史数据失败', e)
-    }
-  }
+const mediumLabels = {
+  N2: 'N₂',
+  O2: 'O₂',
+  H2: 'H₂',
+  CO2: 'CO₂',
+  H2O: 'H₂O'
+}
+
+const getMediumLabel = (key) => mediumLabels[key] || key
+
+// 计算组分总计
+const totalCold = computed(() => {
+  return Object.values(form.cold.mixData.composition).reduce((sum, val) => sum + Number(val), 0)
 })
+
+const totalHot = computed(() => {
+  return Object.values(form.hot.mixData.composition).reduce((sum, val) => sum + Number(val), 0)
+})
+
+// 归一化函数
+const normalizeCold = () => {
+  if (totalCold.value === 0 || Math.abs(totalCold.value - 100) < 0.01) return
+  const factor = 100 / totalCold.value
+  for (const key in form.cold.mixData.composition) {
+    form.cold.mixData.composition[key] = Math.round(form.cold.mixData.composition[key] * factor * 100) / 100
+  }
+}
+
+const normalizeHot = () => {
+  if (totalHot.value === 0 || Math.abs(totalHot.value - 100) < 0.01) return
+  const factor = 100 / totalHot.value
+  for (const key in form.hot.mixData.composition) {
+    form.hot.mixData.composition[key] = Math.round(form.hot.mixData.composition[key] * factor * 100) / 100
+  }
+}
 
 // 水/水蒸气时自动切换流量单位
 function onMediumChange(side) {
@@ -248,27 +293,19 @@ function onMediumTypeChange(side) {
 const submit = async () => {
   // 校验混合介质组分
   if (form.cold.medium_type === 'mix') {
-    const total = Object.values(form.cold.mixData.composition).reduce((a, b) => a + b, 0)
-    if (Math.abs(total - 100) > 0.01) {
+    if (Math.abs(totalCold.value - 100) > 0.01) {
       alert('冷边混合介质组分合计不为 100%，请先点击归一化按钮')
       return
     }
   }
   if (form.hot.medium_type === 'mix') {
-    const total = Object.values(form.hot.mixData.composition).reduce((a, b) => a + b, 0)
-    if (Math.abs(total - 100) > 0.01) {
+    if (Math.abs(totalHot.value - 100) > 0.01) {
       alert('热边混合介质组分合计不为 100%，请先点击归一化按钮')
       return
     }
   }
 
   loading.value = true
-  console.log('[Mode1] Submitting calculation with data:', JSON.stringify({
-    cold_side: form.cold,
-    hot_side: form.hot,
-    turbine: form.turbine
-  }))
-
   try {
     // 构建请求数据
     const coldData = form.cold.medium_type === 'single'
@@ -321,37 +358,26 @@ const submit = async () => {
       turbine: { ...form.turbine }
     }
 
-    console.log('[Mode1] Sending API request to /api/calculate/mode1')
-
-    // 保存输入数据到 localStorage 供导出使用和持久化
+    // 保存输入数据到 localStorage
     localStorage.setItem('mode1_input', JSON.stringify(inputData))
     localStorage.setItem('lastInputData', JSON.stringify(inputData))
     localStorage.setItem('lastInputData_mode1', JSON.stringify(inputData))
 
-    // 使用 api 实例发送请求
     const res = await api.post('/calculate/mode1', inputData)
 
-    console.log('[Mode1] API response:', res)
-
-    // 保存完整的计算结果（输入 + 输出）供其他模块使用
+    // 保存完整的计算结果
     const fullResultData = {
       ...inputData,
       turbine: {
         ...inputData.turbine,
-        ...res  // 合并后端返回的涡轮计算结果
+        ...res.turbine  // 展开 res.turbine 而不是 res
       }
     }
     localStorage.setItem('lastInputData_mode1', JSON.stringify(fullResultData))
 
-    // 处理后端返回的错误
-    if (res?.error) {
-      emit('calculate', res)
-    } else {
-      emit('calculate', res)
-    }
+    emit('calculate', res)
   } catch (e) {
     console.error('[Mode1] Calculation error:', e)
-    // 网络错误或其他异常
     const errorMsg = e?.userMessage || e?.message || '网络错误或服务器无响应，请稍后重试。'
     emit('calculate', {
       error: true,
@@ -361,10 +387,53 @@ const submit = async () => {
     loading.value = false
   }
 }
+
+// 组件挂载时从 localStorage 读取数据
+onMounted(() => {
+  const storedData = localStorage.getItem('mode1_input')
+  if (storedData) {
+    try {
+      const parsed = JSON.parse(storedData)
+      if (parsed.cold_side) {
+        const cold = parsed.cold_side
+        form.cold.medium_type = cold.medium_type || 'single'
+        form.cold.medium = cold.medium || 'N2'
+        form.cold.flow_rate = cold.flow_rate || 1000
+        form.cold.flow_unit = cold.flow_unit || 'Nm3/h'
+        form.cold.p_in = cold.p_in || 0.5
+        form.cold.p_out = cold.p_out || 0.48
+        form.cold.t_in = cold.t_in || 20
+        form.cold.t_out = cold.t_out || 200
+        if (cold.mix_composition) {
+          form.cold.mixData = { composition: cold.mix_composition, composition_type: cold.composition_type || 'mole' }
+        }
+      }
+      if (parsed.hot_side) {
+        const hot = parsed.hot_side
+        form.hot.medium_type = hot.medium_type || 'single'
+        form.hot.medium = hot.medium || 'H2O'
+        form.hot.flow_rate = hot.flow_rate || 0.5
+        form.hot.flow_unit = hot.flow_unit || 'T/h'
+        form.hot.p_in = hot.p_in || 0.6
+        form.hot.p_out = hot.p_out || 0.55
+        form.hot.t_in = hot.t_in || 250
+        if (hot.mix_composition) {
+          form.hot.mixData = { composition: hot.mix_composition, composition_type: hot.composition_type || 'mole' }
+        }
+      }
+      if (parsed.turbine) {
+        form.turbine.p_out = parsed.turbine.p_out || 0.1
+        form.turbine.adiabatic_efficiency = parsed.turbine.adiabatic_efficiency || 85
+      }
+    } catch (e) {
+      console.error('读取历史数据失败', e)
+    }
+  }
+})
 </script>
 
 <style scoped>
-.form-card { margin-bottom: 20px; background: #ffffff; border: 1px solid #dcdfe6; }
-.card-title { color: #303133; font-weight: bold; }
-:deep(.el-card__header) { background: #f5f7fa; border-bottom: 1px solid #dcdfe6; }
+.mode-form-container { }
+.card-body { }
+.card-title { color: #303133; font-weight: bold; font-size: 14px; }
 </style>

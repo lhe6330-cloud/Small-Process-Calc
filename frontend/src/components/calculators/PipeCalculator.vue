@@ -1,12 +1,12 @@
 <template>
   <div class="calculator-container">
-    <h2>📐 管道计算</h2>
-    <p class="description">基于设计流速的管道通径计算</p>
+    <h2 class="tool-title">📐 管道计算</h2>
+    <p class="tool-description">基于设计流速的管道通径计算</p>
 
-    <el-card class="form-card">
-      <el-form :model="form" label-width="140px">
-        <el-form-item label="数据来源" required>
-          <el-select v-model="form.sourceNode" placeholder="请选择流程节点位置" style="width: 100%">
+    <el-card class="tool-form-card">
+      <el-form :model="form" label-width="100px" class="tool-form">
+        <el-form-item label="数据来源">
+          <el-select v-model="form.sourceNode" placeholder="请选择流程节点位置" class="mode-select-md" style="width: 100%">
             <el-option-group label="模式 1 - 先加热再膨胀">
               <el-option label="模式 1 - 冷边进口" value="mode1_cold_inlet" />
               <el-option label="模式 1 - 冷边出口" value="mode1_cold_out" />
@@ -29,20 +29,20 @@
         </el-form-item>
 
         <el-form-item>
-          <el-button type="primary" @click="fetchDataAndAdd" :loading="fetching">
+          <el-button type="primary" @click="fetchDataAndAdd" :loading="fetching" class="tool-btn">
             📥 获取数据并添加
           </el-button>
-          <el-button @click="resetForm">重置</el-button>
+          <el-button @click="resetForm" class="tool-btn">重置</el-button>
         </el-form-item>
       </el-form>
     </el-card>
 
     <!-- 管道计算列表 -->
-    <div v-for="(pipe, index) in pipes" :key="pipe.id" class="pipe-item">
-      <el-card class="result-card">
+    <div v-for="(pipe, index) in pipes" :key="pipe.id" class="tool-item">
+      <el-card class="tool-form-card">
         <template #header>
-          <div class="card-header">
-            <span class="card-title">📐 管道计算 #{{ index + 1 }} - {{ pipe.sourceNode }}</span>
+          <div class="tool-card-header">
+            <span class="tool-card-title">📐 管道计算 #{{ index + 1 }} - {{ pipe.sourceNode }}</span>
             <div>
               <el-button size="small" type="primary" @click="calculatePipe(pipe)" :loading="pipe.calculating">
                 🚀 计算
@@ -53,7 +53,7 @@
         </template>
 
         <!-- 节点参数显示 -->
-        <el-descriptions :column="2" border v-if="pipe.nodeParams">
+        <el-descriptions :column="2" border v-if="pipe.nodeParams" class="tool-descriptions">
           <el-descriptions-item label="位置">{{ pipe.sourceNode }}</el-descriptions-item>
           <el-descriptions-item label="压力">{{ pipe.nodeParams.p }} MPa.G</el-descriptions-item>
           <el-descriptions-item label="温度">{{ pipe.nodeParams.t }} °C</el-descriptions-item>
@@ -62,8 +62,8 @@
         </el-descriptions>
 
         <!-- 设计参数 -->
-        <el-divider content-position="left">⚙️ 设计参数</el-divider>
-        <el-form :model="pipe.designParams" label-width="120px" size="small" v-if="pipe.nodeParams">
+        <el-divider content-position="left" class="tool-divider" v-if="pipe.nodeParams">⚙️ 设计参数</el-divider>
+        <el-form :model="pipe.designParams" label-width="100px" size="small" class="tool-form" v-if="pipe.nodeParams">
           <el-row :gutter="20">
             <el-col :span="8">
               <el-form-item label="介质状态">
@@ -78,13 +78,13 @@
         </el-form>
 
         <!-- 计算结果 -->
-        <el-descriptions :column="2" border v-if="pipe.result">
+        <el-descriptions :column="2" border v-if="pipe.result" class="tool-descriptions">
           <el-descriptions-item label="推荐通径">DN{{ pipe.result.recommended_dn }}</el-descriptions-item>
           <el-descriptions-item label="流速">{{ pipe.result.velocity?.toFixed(1) }} m/s</el-descriptions-item>
           <el-descriptions-item label="计算通径">{{ pipe.result.calculated_dn?.toFixed(1) }} mm</el-descriptions-item>
         </el-descriptions>
 
-        <el-descriptions :column="2" border v-if="pipe.result?.lower_dn">
+        <el-descriptions :column="2" border v-if="pipe.result?.lower_dn" class="tool-descriptions">
           <el-descriptions-item label="小一号通径">
             DN{{ pipe.result.lower_dn }} (v={{ pipe.result.lower_velocity?.toFixed(1) }} m/s)
           </el-descriptions-item>
@@ -225,8 +225,8 @@ const extractNodeParams = (data, sourceNode) => {
         flow_rate: data.cold_side?.flow_rate,
         flow_unit: data.cold_side?.flow_unit,
         medium: data.cold_side?.medium,
-        medium_type: data.cold_side?.medium_type,
-        mix_composition: data.cold_side?.mix_composition,
+        medium_type: data.cold_side?.medium_type || 'single',
+        mix_composition: data.cold_side?.mix_composition || null,
       }
     case 'mode1_cold_out':
       return {
@@ -235,8 +235,8 @@ const extractNodeParams = (data, sourceNode) => {
         flow_rate: data.cold_side?.flow_rate,
         flow_unit: data.cold_side?.flow_unit,
         medium: data.cold_side?.medium,
-        medium_type: data.cold_side?.medium_type,
-        mix_composition: data.cold_side?.mix_composition,
+        medium_type: data.cold_side?.medium_type || 'single',
+        mix_composition: data.cold_side?.mix_composition || null,
       }
     case 'mode1_hot_inlet':
       return {
@@ -245,8 +245,8 @@ const extractNodeParams = (data, sourceNode) => {
         flow_rate: data.hot_side?.flow_rate,
         flow_unit: data.hot_side?.flow_unit,
         medium: data.hot_side?.medium,
-        medium_type: data.hot_side?.medium_type,
-        mix_composition: data.hot_side?.mix_composition,
+        medium_type: data.hot_side?.medium_type || 'single',
+        mix_composition: data.hot_side?.mix_composition || null,
       }
     case 'mode1_hot_out':
       return {
@@ -255,8 +255,8 @@ const extractNodeParams = (data, sourceNode) => {
         flow_rate: data.hot_side?.flow_rate,
         flow_unit: data.hot_side?.flow_unit,
         medium: data.hot_side?.medium,
-        medium_type: data.hot_side?.medium_type,
-        mix_composition: data.hot_side?.mix_composition,
+        medium_type: data.hot_side?.medium_type || 'single',
+        mix_composition: data.hot_side?.mix_composition || null,
       }
     case 'mode1_turbine_out':
       return {
@@ -265,8 +265,8 @@ const extractNodeParams = (data, sourceNode) => {
         flow_rate: data.turbine?.flow_rate,
         flow_unit: data.turbine?.flow_unit,
         medium: data.turbine?.medium,
-        medium_type: data.turbine?.medium_type,
-        mix_composition: data.turbine?.mix_composition,
+        medium_type: data.turbine?.medium_type || 'single',
+        mix_composition: data.turbine?.mix_composition || null,
         rho: data.turbine?.rho_out,
       }
 
@@ -277,8 +277,8 @@ const extractNodeParams = (data, sourceNode) => {
         flow_rate: data.turbine_in?.flow_rate,
         flow_unit: data.turbine_in?.flow_unit,
         medium: data.turbine_in?.medium,
-        medium_type: data.turbine_in?.medium_type,
-        mix_composition: data.turbine_in?.mix_composition,
+        medium_type: data.turbine_in?.medium_type || 'single',
+        mix_composition: data.turbine_in?.mix_composition || null,
       }
     case 'mode2_turbine_out':
       return {
@@ -287,8 +287,8 @@ const extractNodeParams = (data, sourceNode) => {
         flow_rate: data.turbine?.flow_rate,
         flow_unit: data.turbine?.flow_unit,
         medium: data.turbine?.medium,
-        medium_type: data.turbine?.medium_type,
-        mix_composition: data.turbine?.mix_composition,
+        medium_type: data.turbine?.medium_type || 'single',
+        mix_composition: data.turbine?.mix_composition || null,
         rho: data.turbine?.rho_out,
       }
     case 'mode2_cold_out':
@@ -298,7 +298,8 @@ const extractNodeParams = (data, sourceNode) => {
         flow_rate: data.turbine_in?.flow_rate,
         flow_unit: data.turbine_in?.flow_unit,
         medium: data.turbine_in?.medium,
-        medium_type: data.turbine_in?.medium_type,
+        medium_type: data.turbine_in?.medium_type || 'single',
+        mix_composition: data.turbine_in?.mix_composition || null,
       }
     case 'mode2_hot_inlet':
       return {
@@ -338,8 +339,8 @@ const extractNodeParams = (data, sourceNode) => {
         flow_rate: data.turbine?.flow_rate,
         flow_unit: data.turbine?.flow_unit,
         medium: data.turbine?.medium,
-        medium_type: data.turbine?.medium_type,
-        mix_composition: data.turbine?.mix_composition,
+        medium_type: data.turbine?.medium_type || 'single',
+        mix_composition: data.turbine?.mix_composition || null,
         rho: data.turbine?.rho_out,
       }
 
@@ -355,6 +356,20 @@ const calculatePipe = async (pipe) => {
     return
   }
 
+  // 检查必填字段
+  if (!pipe.nodeParams.flow_rate || !pipe.nodeParams.flow_unit) {
+    ElMessage.warning('缺少流量数据')
+    return
+  }
+  if (pipe.nodeParams.p === undefined || pipe.nodeParams.p === null) {
+    ElMessage.warning('缺少压力数据')
+    return
+  }
+  if (pipe.nodeParams.t === undefined || pipe.nodeParams.t === null) {
+    ElMessage.warning('缺少温度数据')
+    return
+  }
+
   pipe.calculating = true
 
   try {
@@ -363,10 +378,10 @@ const calculatePipe = async (pipe) => {
       flow_unit: pipe.nodeParams.flow_unit,
       p_gauge: pipe.nodeParams.p,
       t: pipe.nodeParams.t,
-      medium_type: pipe.nodeParams.medium_type,
+      medium_type: pipe.nodeParams.medium_type || 'single',
       medium: pipe.nodeParams.medium || null,
       mix_composition: pipe.nodeParams.mix_composition || null,
-      medium_state: pipe.designParams?.mediumState || 'gas',  // 新增：用户选择的介质状态
+      medium_state: pipe.designParams?.mediumState || 'gas',
     }
     console.log('发送管道计算请求:', payload)
     const response = await fetch('/api/calculate/pipe', {
@@ -435,11 +450,7 @@ const getStatusMessage = (result) => {
 </script>
 
 <style scoped>
-.calculator-container { padding: 20px; }
-h2 { color: #303133; margin-bottom: 10px; }
-.description { color: #666; margin-bottom: 20px; }
-.form-card, .result-card { margin-bottom: 20px; background: #ffffff; border: 1px solid #dcdfe6; }
-.card-title { font-weight: 600; color: #303133; }
-.card-header { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
-.pipe-item { margin-bottom: 20px; }
+.calculator-container { padding: 15px; }
+.tool-title { color: #303133; margin-bottom: 8px; font-size: 20px; }
+.tool-description { color: #666; margin-bottom: 15px; font-size: 13px; }
 </style>

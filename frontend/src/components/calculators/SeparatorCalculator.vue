@@ -1,12 +1,12 @@
 <template>
   <div class="calculator-container">
-    <h2>📐 分离器计算</h2>
-    <p class="description">基于 Stokes 沉降定律的重力沉降式气液分离器设计</p>
+    <h2 class="tool-title">📐 分离器计算</h2>
+    <p class="tool-description">基于 Stokes 沉降定律的重力沉降式气液分离器设计</p>
 
-    <el-card class="form-card">
-      <el-form :model="form" label-width="140px">
-        <el-form-item label="数据来源" required>
-          <el-select v-model="form.sourceNode" placeholder="请选择流程节点位置" style="width: 100%">
+    <el-card class="tool-form-card">
+      <el-form :model="form" label-width="100px" class="tool-form">
+        <el-form-item label="数据来源">
+          <el-select v-model="form.sourceNode" placeholder="请选择流程节点位置" class="mode-select-md" style="width: 100%">
             <el-option-group label="模式 1 - 先加热再膨胀">
               <el-option label="模式 1 - 冷边进口" value="mode1_cold_inlet" />
               <el-option label="模式 1 - 冷边出口" value="mode1_cold_out" />
@@ -25,20 +25,20 @@
         </el-form-item>
 
         <el-form-item>
-          <el-button type="primary" @click="fetchDataAndAdd" :loading="fetching">
+          <el-button type="primary" @click="fetchDataAndAdd" :loading="fetching" class="tool-btn">
             📥 获取数据并添加
           </el-button>
-          <el-button @click="resetForm">重置</el-button>
+          <el-button @click="resetForm" class="tool-btn">重置</el-button>
         </el-form-item>
       </el-form>
     </el-card>
 
     <!-- 分离器计算列表 -->
-    <div v-for="(sep, index) in separators" :key="sep.id" class="separator-item">
-      <el-card class="result-card">
+    <div v-for="(sep, index) in separators" :key="sep.id" class="tool-item">
+      <el-card class="tool-form-card">
         <template #header>
-          <div class="card-header">
-            <span class="card-title">📐 分离器计算 #{{ index + 1 }} - {{ sep.sourceNode }}</span>
+          <div class="tool-card-header">
+            <span class="tool-card-title">📐 分离器计算 #{{ index + 1 }} - {{ sep.sourceNode }}</span>
             <div>
               <el-button size="small" type="primary" @click="calculateSeparator(sep)" :loading="sep.calculating">
                 🚀 计算
@@ -49,7 +49,7 @@
         </template>
 
         <!-- 节点参数显示 -->
-        <el-descriptions :column="2" border v-if="sep.nodeParams">
+        <el-descriptions :column="2" border v-if="sep.nodeParams" class="tool-descriptions">
           <el-descriptions-item label="位置">{{ sep.sourceNode }}</el-descriptions-item>
           <el-descriptions-item label="压力">{{ sep.nodeParams.p }} MPa.G</el-descriptions-item>
           <el-descriptions-item label="温度">{{ sep.nodeParams.t }} °C</el-descriptions-item>
@@ -60,18 +60,18 @@
         </el-descriptions>
 
         <!-- 设计参数 -->
-        <el-divider content-position="left">⚙️ 设计参数</el-divider>
-        <el-form :model="sep.designParams" label-width="120px" size="small" v-if="sep.nodeParams">
+        <el-divider content-position="left" class="tool-divider" v-if="sep.nodeParams">⚙️ 设计参数</el-divider>
+        <el-form :model="sep.designParams" label-width="100px" size="small" class="tool-form" v-if="sep.nodeParams">
           <el-row :gutter="20">
             <el-col :span="8">
               <el-form-item label="设计液滴粒径">
-                <el-input-number v-model="sep.designParams.dropletSize" :min="10" :max="500" step="10" size="small" />
+                <el-input v-model.number="sep.designParams.dropletSize" type="number" step="10" size="small" />
                 <span style="margin-left: 5px">μm</span>
               </el-form-item>
             </el-col>
             <el-col :span="8">
               <el-form-item label="长径比 L/D">
-                <el-input-number v-model="sep.designParams.lengthRatio" :min="2" :max="5" :step="0.5" :precision="1" size="small" />
+                <el-input v-model.number="sep.designParams.lengthRatio" type="number" step="0.5" size="small" />
               </el-form-item>
             </el-col>
             <el-col :span="8">
@@ -86,7 +86,7 @@
           <el-row :gutter="20">
             <el-col :span="8">
               <el-form-item label="要求停留时间">
-                <el-input-number v-model="sep.designParams.residenceTime" :min="60" :max="600" step="30" size="small" />
+                <el-input v-model.number="sep.designParams.residenceTime" type="number" step="30" size="small" />
                 <span style="margin-left: 5px">s</span>
               </el-form-item>
             </el-col>
@@ -94,8 +94,8 @@
         </el-form>
 
         <!-- 计算结果 -->
-        <el-divider content-position="left">📊 计算结果</el-divider>
-        <el-descriptions :column="2" border v-if="sep.result">
+        <el-divider content-position="left" class="tool-divider" v-if="sep.result">📊 计算结果</el-divider>
+        <el-descriptions :column="2" border v-if="sep.result" class="tool-descriptions">
           <el-descriptions-item label="分离器直径">{{ sep.result.diameter }} mm</el-descriptions-item>
           <el-descriptions-item label="分离器高度/长度">{{ sep.result.length }} mm</el-descriptions-item>
           <el-descriptions-item label="气体流速">{{ sep.result.gas_velocity }} m/s</el-descriptions-item>
@@ -228,7 +228,7 @@ const extractNodeParams = (data, sourceNode) => {
         flow_rate: data.cold_side?.flow_rate,
         flow_unit: data.cold_side?.flow_unit,
         medium: data.cold_side?.medium,
-        medium_type: data.cold_side?.medium_type,
+        medium_type: data.cold_side?.medium_type || 'single',
         rho: 1.2,
         mu: 1.8e-5,
       }
@@ -239,7 +239,7 @@ const extractNodeParams = (data, sourceNode) => {
         flow_rate: data.cold_side?.flow_rate,
         flow_unit: data.cold_side?.flow_unit,
         medium: data.cold_side?.medium,
-        medium_type: data.cold_side?.medium_type,
+        medium_type: data.cold_side?.medium_type || 'single',
         rho: 1.2,
         mu: 1.8e-5,
       }
@@ -250,7 +250,7 @@ const extractNodeParams = (data, sourceNode) => {
         flow_rate: data.turbine?.flow_rate,
         flow_unit: data.turbine?.flow_unit,
         medium: data.turbine?.medium,
-        medium_type: data.turbine?.medium_type,
+        medium_type: data.turbine?.medium_type || 'single',
         rho: data.turbine?.rho_out,
         mu: 1.8e-5,
       }
@@ -262,7 +262,7 @@ const extractNodeParams = (data, sourceNode) => {
         flow_rate: data.turbine_in?.flow_rate,
         flow_unit: data.turbine_in?.flow_unit,
         medium: data.turbine_in?.medium,
-        medium_type: data.turbine_in?.medium_type,
+        medium_type: data.turbine_in?.medium_type || 'single',
         rho: 1.2,
         mu: 1.8e-5,
       }
@@ -273,7 +273,7 @@ const extractNodeParams = (data, sourceNode) => {
         flow_rate: data.turbine?.flow_rate,
         flow_unit: data.turbine?.flow_unit,
         medium: data.turbine?.medium,
-        medium_type: data.turbine?.medium_type,
+        medium_type: data.turbine?.medium_type || 'single',
         rho: data.turbine?.rho_out,
         mu: 1.8e-5,
       }
@@ -284,7 +284,7 @@ const extractNodeParams = (data, sourceNode) => {
         flow_rate: data.turbine_in?.flow_rate,
         flow_unit: data.turbine_in?.flow_unit,
         medium: data.turbine_in?.medium,
-        medium_type: data.turbine_in?.medium_type,
+        medium_type: data.turbine_in?.medium_type || 'single',
         rho: 1.2,
         mu: 1.8e-5,
       }
@@ -296,7 +296,7 @@ const extractNodeParams = (data, sourceNode) => {
         flow_rate: data.turbine_in?.flow_rate,
         flow_unit: data.turbine_in?.flow_unit,
         medium: data.turbine_in?.medium,
-        medium_type: data.turbine_in?.medium_type,
+        medium_type: data.turbine_in?.medium_type || 'single',
         rho: 1.2,
         mu: 1.8e-5,
       }
@@ -307,7 +307,7 @@ const extractNodeParams = (data, sourceNode) => {
         flow_rate: data.turbine?.flow_rate,
         flow_unit: data.turbine?.flow_unit,
         medium: data.turbine?.medium,
-        medium_type: data.turbine?.medium_type,
+        medium_type: data.turbine?.medium_type || 'single',
         rho: data.turbine?.rho_out,
         mu: 1.8e-5,
       }
@@ -373,11 +373,7 @@ const resetForm = () => {
 </script>
 
 <style scoped>
-.calculator-container { padding: 20px; }
-h2 { color: #303133; margin-bottom: 10px; }
-.description { color: #666; margin-bottom: 20px; }
-.form-card, .result-card { margin-bottom: 20px; background: #ffffff; border: 1px solid #dcdfe6; }
-.card-title { font-weight: 600; color: #303133; }
-.card-header { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
-.separator-item { margin-bottom: 20px; }
+.calculator-container { padding: 15px; }
+.tool-title { color: #303133; margin-bottom: 8px; font-size: 20px; }
+.tool-description { color: #666; margin-bottom: 15px; font-size: 13px; }
 </style>
