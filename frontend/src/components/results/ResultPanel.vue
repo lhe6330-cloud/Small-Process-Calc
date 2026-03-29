@@ -173,4 +173,65 @@ const exportExcel = async () => {
 .result-card { margin-bottom: 20px; background: #ffffff; border: 1px solid #dcdfe6; }
 .card-title { font-weight: 600; color: #303133; }
 .export-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+
+/* ========== 移动端响应式样式 ========== */
+@media screen and (max-width: 768px) {
+  .result-card {
+    margin-bottom: 15px;
+  }
+
+  :deep(.el-row) {
+    margin-bottom: 10px !important;
+  }
+
+  :deep(.el-statistic) {
+    margin-bottom: 10px;
+  }
+
+  :deep(.el-statistic__head) {
+    font-size: 12px;
+  }
+
+  :deep(.el-statistic__content) {
+    font-size: 18px;
+  }
+}
+
+/* ========== 小屏幕手机适配 (max-width: 480px) ========== */
+@media screen and (max-width: 480px) {
+  .result-card {
+    margin-bottom: 12px;
+  }
+
+  :deep(.el-row) {
+    margin-bottom: 8px !important;
+  }
+
+  /* 统计卡片改为 24 _span 垂直布局 */
+  :deep(.el-col-8) {
+    width: 100%;
+    margin-bottom: 10px;
+  }
+
+  :deep(.el-statistic) {
+    margin-bottom: 8px;
+  }
+
+  :deep(.el-statistic__head) {
+    font-size: 11px;
+  }
+
+  :deep(.el-statistic__content) {
+    font-size: 16px;
+  }
+
+  /* 导出按钮全宽 */
+  .export-actions {
+    flex-direction: column;
+  }
+
+  .export-actions :deep(.el-button) {
+    width: 100%;
+  }
+}
 </style>

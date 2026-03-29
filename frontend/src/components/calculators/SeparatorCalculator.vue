@@ -376,4 +376,109 @@ const resetForm = () => {
 .calculator-container { padding: 15px; }
 .tool-title { color: #303133; margin-bottom: 8px; font-size: 20px; }
 .tool-description { color: #666; margin-bottom: 15px; font-size: 13px; }
+
+/* ========== 移动端响应式样式 ========== */
+@media screen and (max-width: 768px) {
+  .calculator-container {
+    padding: 10px;
+  }
+
+  .tool-title {
+    font-size: 18px;
+    margin-bottom: 6px;
+  }
+
+  .tool-description {
+    font-size: 12px;
+    margin-bottom: 12px;
+  }
+}
+
+/* ========== 小屏幕手机适配 (max-width: 480px) ========== */
+@media screen and (max-width: 480px) {
+  .calculator-container {
+    padding: 8px;
+  }
+
+  .tool-title {
+    font-size: 16px;
+    margin-bottom: 5px;
+  }
+
+  .tool-description {
+    font-size: 11px;
+    margin-bottom: 10px;
+  }
+
+  /* 卡片头部垂直布局 */
+  .tool-card-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .tool-card-header > div {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+  }
+
+  /* Descriptions 改为 1 列 */
+  :deep(.el-descriptions--default) {
+    --el-descriptions-items-fill: 1;
+  }
+
+  :deep(.el-descriptions__label),
+  :deep(.el-descriptions__content) {
+    font-size: 10px;
+    padding: 6px 8px;
+  }
+
+  /* 表单布局优化 - 移动端改为垂直布局 */
+  /* el-col :span="8" 改为全宽 */
+  :deep(.el-row) .el-col-8 {
+    width: 100%;
+    max-width: 100%;
+    flex: 0 0 100%;
+  }
+
+  :deep(.el-row) .el-col-12 {
+    width: 100%;
+    max-width: 100%;
+    flex: 0 0 100%;
+  }
+
+  /* 表单标签和输入框垂直排列 */
+  :deep(.el-form-item) {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    margin-bottom: 12px;
+  }
+
+  :deep(.el-form-item__label) {
+    width: 100% !important;
+    text-align: left !important;
+    margin-bottom: 5px;
+    font-size: 12px;
+  }
+
+  :deep(.el-form-item__content) {
+    width: 100%;
+    margin-left: 0 !important;
+  }
+
+  :deep(.el-input-number),
+  :deep(.el-select),
+  :deep(.el-radio-group) {
+    width: 100%;
+  }
+
+  /* 按钮缩小 */
+  .tool-btn {
+    padding: 6px 12px;
+    font-size: 12px;
+    height: 30px;
+  }
+}
 </style>

@@ -37,7 +37,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import Mode1Form from './components/modes/Mode1Form.vue'
 import Mode2Form from './components/modes/Mode2Form.vue'
 import Mode3Form from './components/modes/Mode3Form.vue'
@@ -52,6 +52,22 @@ const results = ref({
   mode1: null,
   mode2: null,
   mode3: null,
+})
+
+// 移动端检测
+const isMobile = ref(false)
+
+onMounted(() => {
+  // 检测设备类型
+  const checkMobile = () => {
+    const userAgent = navigator.userAgent.toLowerCase()
+    const isMobileDevice = /android|iphone|ipad|ipod|webos|iemobile|wpdesktop/i.test(userAgent)
+    const isSmallScreen = window.innerWidth <= 768
+    isMobile.value = isMobileDevice || isSmallScreen
+  }
+
+  checkMobile()
+  window.addEventListener('resize', checkMobile)
 })
 
 const currentResult = computed(() => results.value[activeTab.value])
@@ -70,6 +86,137 @@ body { font-family: 'Microsoft YaHei', sans-serif; background: #ffffff; color: #
 .subtitle { color: #666; font-size: 14px; }
 .main { padding: 15px; max-width: 1400px; margin: 0 auto; }
 .content { margin-top: 15px; }
+
+/* ========== 移动端响应式样式 ========== */
+@media screen and (max-width: 768px) {
+  .header { padding: 15px 10px; }
+  .header h1 { font-size: 22px; }
+  .subtitle { font-size: 12px; display: block; margin-top: 5px; }
+  .main { padding: 10px; }
+
+  /* Tabs 横向滚动 */
+  :deep(.el-tabs__nav-wrap) { overflow-x: auto; }
+  :deep(.el-tabs__nav) { display: flex; }
+  :deep(.el-tabs__item) {
+    padding: 0 15px !important;
+    font-size: 13px !important;
+    white-space: nowrap;
+  }
+}
+
+/* ========== 小屏幕手机适配 (max-width: 480px) ========== */
+@media screen and (max-width: 480px) {
+  .header { padding: 12px 8px; }
+  .header h1 { font-size: 18px; }
+  .subtitle { font-size: 11px; }
+  .main { padding: 8px; }
+
+  /* 卡片自适应宽度 */
+  .mode-form-card, .tool-form-card {
+    width: 100%;
+    margin-bottom: 12px;
+  }
+
+  /* 表单行改为垂直布局 */
+  .mode-form-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .mode-form-group {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  /* 标签自适应 */
+  .mode-form-label {
+    width: 80px !important;
+    text-align: left;
+    flex-shrink: 0;
+  }
+
+  /* 输入框全宽 */
+  .mode-input-sm, .mode-input-md, .mode-input-lg,
+  .mode-select-sm, .mode-select-md {
+    width: 100%;
+    max-width: 140px;
+  }
+
+  /* 单位文字缩小 */
+  .mode-unit-text {
+    min-width: 35px;
+    font-size: 12px;
+  }
+
+  /* 混合介质组分垂直排列 */
+  .mode-mix-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .mode-mix-item {
+    width: 100%;
+    justify-content: space-between;
+    padding: 4px 0;
+  }
+
+  .mode-mix-item input {
+    width: 80px;
+    max-width: 100px;
+  }
+
+  /* 计算按钮全宽 */
+  .mode-calc-btn {
+    width: 100%;
+    padding: 12px 20px;
+  }
+
+  /* 工具卡片头部垂直布局 */
+  .tool-card-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .tool-card-header > div {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+  }
+
+  /* 工具表单全宽 */
+  .tool-form :deep(.el-input-number),
+  .tool-form :deep(.el-select) {
+    width: 100%;
+    max-width: 140px;
+  }
+
+  /* Descriptions 紧凑 */
+  .tool-descriptions :deep(.el-descriptions__label),
+  .tool-descriptions :deep(.el-descriptions__content) {
+    padding: 6px 8px;
+    font-size: 11px;
+  }
+
+  /* 按钮缩小 */
+  .tool-btn {
+    padding: 6px 12px;
+    font-size: 12px;
+    height: 30px;
+  }
+
+  /* 标题缩小 */
+  .tool-title {
+    font-size: 17px;
+    margin-bottom: 6px;
+  }
+
+  .tool-description {
+    font-size: 12px;
+    margin-bottom: 12px;
+  }
+}
 :deep(.el-tabs) { --el-bg-color: #ffffff; --el-text-color-primary: #303133; }
 :deep(.el-tabs__item) { color: #666; border: 1px solid #dcdfe6; background: #f5f7fa; }
 :deep(.el-tabs__item.is-active) { color: #409EFF; border-color: #409EFF; background: #ffffff; }

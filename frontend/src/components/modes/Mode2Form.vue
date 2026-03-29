@@ -450,4 +450,82 @@ onMounted(() => {
 .mode-form-container { }
 .card-body { }
 .card-title { color: #303133; font-weight: bold; font-size: 14px; }
+
+/* ========== 移动端响应式样式 ========== */
+@media screen and (max-width: 768px) {
+  .mode-form-row {
+    gap: 10px;
+  }
+
+  .mode-form-label {
+    font-size: 12px;
+  }
+
+  .mode-input-sm, .mode-input-md, .mode-input-lg,
+  .mode-select-sm, .mode-select-md {
+    font-size: 12px;
+  }
+
+  .mode-unit-text {
+    font-size: 12px;
+  }
+}
+
+/* ========== 小屏幕手机适配 (max-width: 480px) ========== */
+@media screen and (max-width: 480px) {
+  /* 表单行垂直布局 */
+  .mode-form-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .mode-form-group {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  /* 标签自适应 */
+  .mode-form-label {
+    width: 80px !important;
+    text-align: left;
+    flex-shrink: 0;
+  }
+
+  /* 输入框全宽 */
+  .mode-input-sm, .mode-input-md, .mode-input-lg,
+  .mode-select-sm, .mode-select-md {
+    width: 100%;
+    max-width: 140px;
+  }
+
+  /* 单位文字缩小 */
+  .mode-unit-text {
+    min-width: 35px;
+    font-size: 11px;
+  }
+
+  /* 混合介质组分垂直排列 */
+  .mode-mix-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .mode-mix-item {
+    width: 100%;
+    justify-content: space-between;
+    padding: 4px 0;
+  }
+
+  .mode-mix-item input {
+    width: 80px;
+    max-width: 100px;
+  }
+
+  /* 计算按钮全宽 */
+  .mode-calc-btn {
+    width: 100%;
+    padding: 12px 20px;
+  }
+}
 </style>
