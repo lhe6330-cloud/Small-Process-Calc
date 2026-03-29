@@ -1,12 +1,12 @@
 <template>
   <div class="calculator-container">
-    <h2>⚙️ 涡轮一维设计</h2>
-    <p class="description">径流式（向心）涡轮的一维通流设计计算</p>
+    <h2 class="tool-title">⚙️ 涡轮一维设计</h2>
+    <p class="tool-description">径流式（向心）涡轮的一维通流设计计算</p>
 
-    <el-card class="form-card">
-      <el-form :model="form" label-width="140px">
-        <el-form-item label="数据来源" required>
-          <el-select v-model="form.sourceTurbine" placeholder="请选择涡轮来源" style="width: 100%">
+    <el-card class="tool-form-card">
+      <el-form :model="form" label-width="100px" class="tool-form">
+        <el-form-item label="数据来源">
+          <el-select v-model="form.sourceTurbine" placeholder="请选择涡轮来源" class="mode-select-md" style="width: 100%">
             <el-option label="模式 1 - 涡轮膨胀机" value="mode1_turbine" />
             <el-option label="模式 2 - 涡轮膨胀机" value="mode2_turbine" />
             <el-option label="模式 3 - 涡轮膨胀机" value="mode3_turbine" />
@@ -14,20 +14,20 @@
         </el-form-item>
 
         <el-form-item>
-          <el-button type="primary" @click="fetchDataAndAdd" :loading="fetching">
+          <el-button type="primary" @click="fetchDataAndAdd" :loading="fetching" class="tool-btn">
             📥 获取数据并添加
           </el-button>
-          <el-button @click="resetForm">重置</el-button>
+          <el-button @click="resetForm" class="tool-btn">重置</el-button>
         </el-form-item>
       </el-form>
     </el-card>
 
     <!-- 涡轮计算列表 -->
-    <div v-for="(turb, index) in turbines" :key="turb.id" class="turbine-item">
-      <el-card class="result-card">
+    <div v-for="(turb, index) in turbines" :key="turb.id" class="tool-item">
+      <el-card class="tool-form-card">
         <template #header>
-          <div class="card-header">
-            <span class="card-title">⚙️ 涡轮一维设计 #{{ index + 1 }} - {{ turb.sourceTurbine }}</span>
+          <div class="tool-card-header">
+            <span class="tool-card-title">⚙️ 涡轮一维设计 #{{ index + 1 }} - {{ turb.sourceTurbine }}</span>
             <div>
               <el-button size="small" type="primary" @click="calculateTurbine(turb)" :loading="turb.calculating">
                 🚀 计算
@@ -38,7 +38,7 @@
         </template>
 
         <!-- 涡轮参数显示 -->
-        <el-descriptions :column="3" border v-if="turb.turbineParams">
+        <el-descriptions :column="3" border v-if="turb.turbineParams" class="tool-descriptions">
           <el-descriptions-item label="流量">{{ turb.turbineParams.flow_rate }} {{ turb.turbineParams.flow_unit }}</el-descriptions-item>
           <el-descriptions-item label="介质">{{ turb.turbineParams.medium }}</el-descriptions-item>
           <el-descriptions-item label="进口压力">{{ turb.turbineParams.p_in }} MPa.G</el-descriptions-item>
@@ -51,30 +51,30 @@
         </el-descriptions>
 
         <!-- 设计参数 -->
-        <el-divider content-position="left" v-if="turb.turbineParams">⚙️ 设计参数</el-divider>
-        <el-form :model="turb.designParams" label-width="120px" size="small" v-if="turb.turbineParams">
+        <el-divider content-position="left" class="tool-divider" v-if="turb.turbineParams">⚙️ 设计参数</el-divider>
+        <el-form :model="turb.designParams" label-width="100px" size="small" class="tool-form" v-if="turb.turbineParams">
           <el-row :gutter="20">
             <el-col :span="8">
               <el-form-item label="* 转速 n">
-                <el-input-number v-model="turb.designParams.speedRpm" :min="1000" :max="20000" step="500" size="small" />
+                <el-input v-model.number="turb.designParams.speedRpm" type="number" step="500" size="small" />
                 <span style="margin-left: 5px">rpm</span>
               </el-form-item>
             </el-col>
             <el-col :span="8">
               <el-form-item label="* 叶片数 Z">
-                <el-input-number v-model="turb.designParams.bladeCount" :min="9" :max="21" step="1" size="small" />
+                <el-input v-model.number="turb.designParams.bladeCount" type="number" step="1" size="small" />
               </el-form-item>
             </el-col>
             <el-col :span="8">
               <el-form-item label="* 速比 u/C₀">
-                <el-input-number v-model="turb.designParams.speedRatio" :min="0.6" :max="0.75" :step="0.01" :precision="2" size="small" />
+                <el-input v-model.number="turb.designParams.speedRatio" type="number" step="0.01" size="small" />
               </el-form-item>
             </el-col>
           </el-row>
           <el-row :gutter="20">
             <el-col :span="8">
               <el-form-item label="* 反动度 Ω">
-                <el-input-number v-model="turb.designParams.reaction" :min="0" :max="100" step="5" size="small" />
+                <el-input v-model.number="turb.designParams.reaction" type="number" step="5" size="small" />
                 <span style="margin-left: 5px">%</span>
               </el-form-item>
             </el-col>
@@ -82,10 +82,10 @@
         </el-form>
 
         <!-- 计算结果 -->
-        <el-divider content-position="left" v-if="turb.result">📊 计算结果</el-divider>
+        <el-divider content-position="left" class="tool-divider" v-if="turb.result">📊 计算结果</el-divider>
         <div v-if="turb.result">
-          <h4>📐 基本尺寸</h4>
-          <el-descriptions :column="2" border size="small" v-if="turb.result.dimensions">
+          <h4 class="tool-subtitle">📐 基本尺寸</h4>
+          <el-descriptions :column="2" border size="small" class="tool-descriptions" v-if="turb.result.dimensions">
             <el-descriptions-item label="叶轮外径 D₁">{{ turb.result.dimensions?.D1 }} mm</el-descriptions-item>
             <el-descriptions-item label="叶轮内径 D₂">{{ turb.result.dimensions?.D2 }} mm</el-descriptions-item>
             <el-descriptions-item label="进口叶片高度 b₁">{{ turb.result.dimensions?.b1 }} mm</el-descriptions-item>
@@ -93,8 +93,8 @@
             <el-descriptions-item label="叶片数 Z" :span="2">{{ turb.result.dimensions?.Z }}</el-descriptions-item>
           </el-descriptions>
 
-          <h4 style="margin-top: 15px">🔺 速度三角形 - 进口</h4>
-          <el-descriptions :column="3" border size="small" v-if="turb.result.velocity_triangle_in">
+          <h4 class="tool-subtitle" style="margin-top: 15px">🔺 速度三角形 - 进口</h4>
+          <el-descriptions :column="3" border size="small" class="tool-descriptions" v-if="turb.result.velocity_triangle_in">
             <el-descriptions-item label="C₁">{{ turb.result.velocity_triangle_in?.C1 }} m/s</el-descriptions-item>
             <el-descriptions-item label="W₁">{{ turb.result.velocity_triangle_in?.W1 }} m/s</el-descriptions-item>
             <el-descriptions-item label="U₁">{{ turb.result.velocity_triangle_in?.U1 }} m/s</el-descriptions-item>
@@ -102,8 +102,8 @@
             <el-descriptions-item label="β₁">{{ turb.result.velocity_triangle_in?.beta1 }}°</el-descriptions-item>
           </el-descriptions>
 
-          <h4 style="margin-top: 15px">🔺 速度三角形 - 出口</h4>
-          <el-descriptions :column="3" border size="small" v-if="turb.result.velocity_triangle_out">
+          <h4 class="tool-subtitle" style="margin-top: 15px">🔺 速度三角形 - 出口</h4>
+          <el-descriptions :column="3" border size="small" class="tool-descriptions" v-if="turb.result.velocity_triangle_out">
             <el-descriptions-item label="C₂">{{ turb.result.velocity_triangle_out?.C2 }} m/s</el-descriptions-item>
             <el-descriptions-item label="W₂">{{ turb.result.velocity_triangle_out?.W2 }} m/s</el-descriptions-item>
             <el-descriptions-item label="U₂">{{ turb.result.velocity_triangle_out?.U2 }} m/s</el-descriptions-item>
@@ -111,8 +111,8 @@
             <el-descriptions-item label="β₂">{{ turb.result.velocity_triangle_out?.beta2 }}°</el-descriptions-item>
           </el-descriptions>
 
-          <h4 style="margin-top: 15px">🔥 热力参数</h4>
-          <el-descriptions :column="2" border size="small" v-if="turb.result.thermo_params">
+          <h4 class="tool-subtitle" style="margin-top: 15px">🔥 热力参数</h4>
+          <el-descriptions :column="2" border size="small" class="tool-descriptions" v-if="turb.result.thermo_params">
             <el-descriptions-item label="级效率 η">{{ turb.result.thermo_params?.eta }}%</el-descriptions-item>
             <el-descriptions-item label="反动度 Ω">{{ turb.result.thermo_params?.omega }}%</el-descriptions-item>
             <el-descriptions-item label="速比 u/C₀">{{ turb.result.thermo_params?.speed_ratio }}</el-descriptions-item>
@@ -390,12 +390,8 @@ const resetForm = () => {
 </script>
 
 <style scoped>
-.calculator-container { padding: 20px; }
-h2 { color: #303133; margin-bottom: 10px; }
-.description { color: #666; margin-bottom: 20px; }
-.form-card, .result-card { margin-bottom: 20px; background: #ffffff; border: 1px solid #dcdfe6; }
-.card-title { font-weight: 600; color: #303133; }
-.card-header { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
-.turbine-item { margin-bottom: 20px; }
-h4 { color: #303133; margin: 15px 0 10px 0; font-size: 14px; }
+.calculator-container { padding: 15px; }
+.tool-title { color: #303133; margin-bottom: 8px; font-size: 20px; }
+.tool-description { color: #666; margin-bottom: 15px; font-size: 13px; }
+.tool-subtitle { color: #303133; margin: 15px 0 10px 0; font-size: 14px; }
 </style>
